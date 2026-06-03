@@ -498,8 +498,13 @@ export default function App() {
   };
 
   const handleDeletePerson = (id: string) => {
+    console.log("[DELETE] Deletando pessoa:", id);
     setPeople(prev => prev.filter(p => p.id !== id));
-    fs(() => deletePerson(userId!, id));
+    fs(async () => {
+      console.log("[DELETE] Chamando Firestore...");
+      await deletePerson(userId!, id);
+      console.log("[DELETE] Sucesso!");
+    });
   };
 
   const handleUpdatePerson = (updated: Person) => {

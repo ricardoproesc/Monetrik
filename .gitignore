@@ -1,0 +1,25 @@
+node_modules/
+build/
+dist/
+dist-ssr/
+coverage/
+.DS_Store
+*.log
+
+# Variáveis de ambiente — NUNCA versionar
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Manter apenas os templates de exemplo
+!.env.example
+!.env.local.example
+
+# Vercel
+.vercel/
+
+# Editor
+.vscode/
+.idea/

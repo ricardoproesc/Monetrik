@@ -28,7 +28,10 @@ export const auth = app ? getAuth(app) : null;
 // persistentLocalCache: escritas resolvem imediatamente no cache local
 // e sincronizam com o servidor em background
 export const db = app
-  ? initializeFirestore(app, { localCache: persistentLocalCache() })
+  ? initializeFirestore(app, {
+      localCache: persistentLocalCache(),
+      experimentalForceLongPolling: true,
+    })
   : null;
 
 export default app;

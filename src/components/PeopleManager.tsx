@@ -332,7 +332,9 @@ export default function PeopleManager({ people, onAddPerson, onToggleActive, onD
 
       {/* Grid of existing family members */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {people.map(person => (
+        {people.map(person => {
+          console.log("[PERSON]", person.id, "{ name:", person.name, ", relationship:", person.relationship, ", active:", person.active, ", showDelete:", person.relationship !== 'principal' || !person.name, "}");
+          return (
           <div
             key={person.id}
             id={`person-card-${person.id}`}
@@ -406,7 +408,8 @@ export default function PeopleManager({ people, onAddPerson, onToggleActive, onD
               )}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* MODAL DE EDIÇÃO DE INTEGRANTE */}

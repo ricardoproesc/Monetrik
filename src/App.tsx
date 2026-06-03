@@ -211,12 +211,17 @@ export default function App() {
 
           if (fsPeople.length > 0) {
             const PLACEHOLDERS = ["Titular da Família", "Cônjuge", "Filho(a)"];
-            const realPeople = fsPeople.filter(p => !PLACEHOLDERS.includes(p.name));
-            const fakePeople = fsPeople.filter(p => PLACEHOLDERS.includes(p.name));
+            const validPeople = fsPeople.filter(p => p.id);
+            const realPeople = validPeople.filter(p => !PLACEHOLDERS.includes(p.name));
+            const fakePeople = validPeople.filter(p => PLACEHOLDERS.includes(p.name));
+            const brokenPeople = fsPeople.filter(p => !p.id);
 
-            // Remove placeholders do Firestore silenciosamente
-            if (fakePeople.length > 0) {
+            // Remove placeholders e pessoas quebradas (sem ID) do Firestore
+            if (fakePeople.length > 0 || brokenPeople.length > 0) {
               fakePeople.forEach(p => deletePerson(uid, p.id).catch(() => {}));
+              brokenPeople.forEach(p => {
+                if (p.id) deletePerson(uid, p.id).catch(() => {});
+              });
             }
 
             if (realPeople.length > 0) {

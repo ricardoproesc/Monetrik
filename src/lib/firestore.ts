@@ -17,11 +17,15 @@ import type { Person, Income, Expense, AlertSettings } from "../types";
 const userRef = (uid: string) => doc(db, "users", uid);
 const col = (uid: string, name: string) => collection(db, "users", uid, name);
 
+// Remove campos undefined — Firestore não aceita undefined
+const clean = <T extends object>(obj: T): T =>
+  JSON.parse(JSON.stringify(obj)) as T;
+
 // -------------------------------------------------------
 // Settings
 // -------------------------------------------------------
 export async function saveSettings(uid: string, settings: AlertSettings) {
-  await setDoc(doc(db, "users", uid, "meta", "settings"), settings);
+  await setDoc(doc(db, "users", uid, "meta", "settings"), clean(settings));
 }
 
 export async function loadSettings(uid: string): Promise<AlertSettings | null> {
@@ -34,7 +38,7 @@ export async function loadSettings(uid: string): Promise<AlertSettings | null> {
 // People
 // -------------------------------------------------------
 export async function savePerson(uid: string, person: Person) {
-  await setDoc(doc(col(uid, "people"), person.id), person);
+  await setDoc(doc(col(uid, "people"), person.id), clean(person));
 }
 
 export async function deletePerson(uid: string, personId: string) {
@@ -50,7 +54,7 @@ export async function loadPeople(uid: string): Promise<Person[]> {
 // Incomes
 // -------------------------------------------------------
 export async function saveIncome(uid: string, income: Income) {
-  await setDoc(doc(col(uid, "incomes"), income.id), income);
+  await setDoc(doc(col(uid, "incomes"), income.id), clean(income));
 }
 
 export async function deleteIncome(uid: string, incomeId: string) {
@@ -66,7 +70,7 @@ export async function loadIncomes(uid: string): Promise<Income[]> {
 // Expenses
 // -------------------------------------------------------
 export async function saveExpense(uid: string, expense: Expense) {
-  await setDoc(doc(col(uid, "expenses"), expense.id), expense);
+  await setDoc(doc(col(uid, "expenses"), expense.id), clean(expense));
 }
 
 export async function deleteExpense(uid: string, expenseId: string) {
@@ -102,7 +106,7 @@ export async function batchSaveItems<T extends { id: string }>(
   const batch = writeBatch(db);
   items.forEach((item) => {
     const ref = doc(col(uid, collectionName), item.id);
-    batch.set(ref, item);
+    batch.set(ref, clean(item));
   });
   await batch.commit();
 }

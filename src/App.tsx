@@ -342,7 +342,7 @@ export default function App() {
   // ─── Cadastro ────────────────────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nameInput.trim() || !emailInput.trim() || !passInput.trim()) {
+    if (!emailInput.trim() || !passInput.trim()) {
       setAuthFeedback("Por favor, preencha todos os campos do cadastro.");
       setAuthStatus('error');
       return;
@@ -356,7 +356,6 @@ export default function App() {
     if (isFirebaseConfigured && auth) {
       try {
         const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passInput);
-        await updateProfile(cred.user, { displayName: nameInput.trim() });
         await sendEmailVerification(cred.user);
 
         // Desloga até o e-mail ser verificado
@@ -422,6 +421,10 @@ export default function App() {
     setPeople([newPerson]);
     setIncomes([]);
     setExpenses([]);
+    // Salva o nome no Firebase Auth para uso futuro
+    if (isFirebaseConfigured && auth?.currentUser) {
+      updateProfile(auth.currentUser, { displayName: memberData.name }).catch(() => {});
+    }
     localStorage.setItem(`kashfam_onboarded_${sessionEmail}`, "true");
     setIsOnboarded(true);
   };
@@ -639,20 +642,6 @@ export default function App() {
             {/* REGISTER VIEW */}
             {authView === 'register' && (
               <form onSubmit={handleRegister} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-zinc-700">Nome do Titular Familiar</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 h-4.5 w-4.5 text-zinc-400" />
-                    <input
-                      type="text"
-                      value={nameInput}
-                      onChange={e => setNameInput(e.target.value)}
-                      placeholder="Ex: Amanda Matos"
-                      className="w-full text-xs border border-zinc-200 bg-white rounded-xl pl-10 pr-3 py-3 focus:outline-none focus:border-zinc-400"
-                    />
-                  </div>
-                </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-zinc-700">E-mail Familiar de Contato</label>
                   <div className="relative">

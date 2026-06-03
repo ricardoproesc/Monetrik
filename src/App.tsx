@@ -4,6 +4,15 @@
  */
 
 import React, { useState, useEffect } from "react";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  updateProfile,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { auth, isFirebaseConfigured } from "./lib/firebase";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
 import TransactionsManager from "./components/TransactionsManager";
@@ -231,8 +240,42 @@ export default function App() {
     localStorage.setItem("kashfam_settings", JSON.stringify(alertSettings));
   }, [alertSettings]);
 
-  // Handle Authentication submit
-  const handleLogin = (e: React.FormEvent) => {
+  // ─── helpers de sessão local ───────────────────────────────────────────────
+  const persistSession = (email: string) => {
+    setIsAuthenticated(true);
+    setSessionEmail(email);
+    localStorage.setItem("kashfam_auth", "true");
+    localStorage.setItem("kashfam_email", email);
+  };
+
+  const clearSession = () => {
+    setIsAuthenticated(false);
+    setSessionEmail("");
+    localStorage.removeItem("kashfam_auth");
+    localStorage.removeItem("kashfam_email");
+  };
+
+  // Observa mudanças de auth do Firebase (mantém sessão ao recarregar)
+  useEffect(() => {
+    if (!isFirebaseConfigured || !auth) return;
+    return onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        setSessionEmail(user.email || "");
+        localStorage.setItem("kashfam_auth", "true");
+        localStorage.setItem("kashfam_email", user.email || "");
+      } else {
+        setIsAuthenticated(false);
+        setSessionEmail("");
+        localStorage.removeItem("kashfam_auth");
+        localStorage.removeItem("kashfam_email");
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Login ──────────────────────────────────────────────────────────────────
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailInput.trim() || !passInput.trim()) {
       setAuthFeedback("Por favor, preencha todos os campos.");
@@ -240,39 +283,78 @@ export default function App() {
       return;
     }
 
-    // Demo bypass or simple validation
-    setIsAuthenticated(true);
-    localStorage.setItem("kashfam_auth", "true");
-    setSessionEmail(emailInput.trim());
-    localStorage.setItem("kashfam_email", emailInput.trim());
-    setAuthFeedback("");
+    if (isFirebaseConfigured && auth) {
+      try {
+        await signInWithEmailAndPassword(auth, emailInput.trim(), passInput);
+        setAuthFeedback("");
+        // onAuthStateChanged cuida de setar isAuthenticated
+      } catch (err: any) {
+        const msgs: Record<string, string> = {
+          "auth/user-not-found": "E-mail não cadastrado.",
+          "auth/wrong-password": "Senha incorreta.",
+          "auth/invalid-credential": "E-mail ou senha incorretos.",
+          "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos.",
+        };
+        setAuthFeedback(msgs[err.code] || "Erro ao fazer login. Tente novamente.");
+        setAuthStatus('error');
+      }
+    } else {
+      // Fallback sem Firebase: aceita qualquer credencial válida
+      persistSession(emailInput.trim());
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  // ─── Cadastro ────────────────────────────────────────────────────────────────
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nameInput.trim() || !emailInput.trim() || !passInput.trim()) {
       setAuthFeedback("Por favor, preencha todos os campos do cadastro.");
       setAuthStatus('error');
       return;
     }
+    if (passInput.trim().length < 6) {
+      setAuthFeedback("A senha precisa ter no mínimo 6 caracteres.");
+      setAuthStatus('error');
+      return;
+    }
 
-    // Simulate sending real confirmation e-mail (as specified: SMTP Economico Zoho/Resend)
-    setAuthFeedback(`Cadastro realizado com sucesso! Um e-mail de confirmação foi disparado para "${emailInput}" através do provedor econômico Resend API.`);
-    setAuthStatus('success');
+    if (isFirebaseConfigured && auth) {
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passInput);
+        await updateProfile(cred.user, { displayName: nameInput.trim() });
 
-    // Preset current owner to nameInput
-    const updatedPeople = [...people];
-    updatedPeople[0] = {
-      ...updatedPeople[0],
-      name: nameInput,
-      email: emailInput
-    };
-    setPeople(updatedPeople);
-    setSessionEmail(emailInput.trim());
-    localStorage.setItem("kashfam_email", emailInput.trim());
+        // Atualiza o titular na lista de pessoas
+        setPeople(prev => {
+          const updated = [...prev];
+          updated[0] = { ...updated[0], name: nameInput.trim(), email: emailInput.trim() };
+          return updated;
+        });
+
+        setAuthFeedback(`Bem-vindo(a), ${nameInput.trim()}! Conta criada com sucesso.`);
+        setAuthStatus('success');
+        // onAuthStateChanged vai fazer o redirect automático
+      } catch (err: any) {
+        const msgs: Record<string, string> = {
+          "auth/email-already-in-use": "Este e-mail já possui cadastro. Faça login.",
+          "auth/invalid-email": "E-mail inválido.",
+          "auth/weak-password": "Senha muito fraca. Use ao menos 6 caracteres.",
+        };
+        setAuthFeedback(msgs[err.code] || "Erro ao criar conta. Tente novamente.");
+        setAuthStatus('error');
+      }
+    } else {
+      // Fallback sem Firebase: cria sessão local
+      setPeople(prev => {
+        const updated = [...prev];
+        updated[0] = { ...updated[0], name: nameInput.trim(), email: emailInput.trim() };
+        return updated;
+      });
+      persistSession(emailInput.trim());
+    }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  // ─── Recuperação de Senha ───────────────────────────────────────────────────
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailInput.trim()) {
       setAuthFeedback("Por favor, insira seu e-mail de cadastro.");
@@ -280,22 +362,30 @@ export default function App() {
       return;
     }
 
-    setAuthFeedback(`Link de redefinição de senha enviado para "${emailInput}". Verifique sua caixa de entrada.`);
-    setAuthStatus('success');
+    if (isFirebaseConfigured && auth) {
+      try {
+        await sendPasswordResetEmail(auth, emailInput.trim());
+        setAuthFeedback(`E-mail de redefinição enviado para "${emailInput}". Verifique sua caixa de entrada.`);
+        setAuthStatus('success');
+      } catch (err: any) {
+        setAuthFeedback("Não foi possível enviar o e-mail. Verifique o endereço informado.");
+        setAuthStatus('error');
+      }
+    } else {
+      setAuthFeedback("Recuperação de senha requer Firebase configurado.");
+      setAuthStatus('info');
+    }
   };
 
   const handleDemoBypass = () => {
-    setIsAuthenticated(true);
-    localStorage.setItem("kashfam_auth", "true");
-    setSessionEmail("demo@monetrik.app");
-    localStorage.setItem("kashfam_email", "demo@monetrik.app");
+    persistSession("demo@monetrik.app");
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem("kashfam_auth");
-    localStorage.removeItem("kashfam_email");
-    setSessionEmail("");
+  const handleLogout = async () => {
+    if (isFirebaseConfigured && auth) {
+      await signOut(auth);
+    }
+    clearSession();
     setAuthFeedback("");
     setAuthStatus('');
   };

@@ -37,146 +37,6 @@ import {
   BookOpen, HelpCircle, LogOut, Mail, Lock, User, Check, AlertCircle, Menu, X
 } from "lucide-react";
 
-// Pre-seed some default high-quality metrics to load if localStorage is empty
-const DEFAULT_PEOPLE: Person[] = [
-  {
-    id: "p1",
-    name: "Titular da Família",
-    avatar: "👨‍💼",
-    gender: "masculino",
-    relationship: "principal",
-    email: "titular@familia.com",
-    whatsapp: "",
-    birthDate: "1988-05-12",
-    color: "#3b82f6", // Cosmic Royal Blue
-    active: true
-  },
-  {
-    id: "p2",
-    name: "Cônjuge",
-    avatar: "👩‍💻",
-    gender: "feminino",
-    relationship: "conjuge",
-    email: "conjuge@familia.com",
-    whatsapp: "",
-    birthDate: "1990-09-24",
-    color: "#10b981", // Emerald Green
-    active: true
-  },
-  {
-    id: "p3",
-    name: "Filho(a)",
-    avatar: "👦",
-    gender: "masculino",
-    relationship: "filho(a)",
-    email: "",
-    whatsapp: "",
-    birthDate: "2018-02-15",
-    color: "#6366f1", // Indigo
-    active: true
-  }
-];
-
-const DEFAULT_INCOMES: Income[] = [
-  {
-    id: "in-1",
-    personId: "p1",
-    category: "Salário",
-    amount: 7200.00,
-    date: "2026-05-01",
-    notes: "Rendimento fixo CLT",
-    isFixed: true,
-    isRecurring: true,
-    recurrence: "mensal"
-  },
-  {
-    id: "in-2",
-    personId: "p2",
-    category: "Freelance",
-    amount: 3100.00,
-    date: "2026-05-10",
-    notes: "Projeto de design UI/UX de SaaS",
-    isFixed: false,
-    isRecurring: false,
-    recurrence: "eventual"
-  }
-];
-
-const DEFAULT_EXPENSES: Expense[] = [
-  {
-    id: "ex-1",
-    name: "Aluguel Apartamento",
-    category: "Aluguel",
-    isFixed: true,
-    amount: 3200.00,
-    date: "2026-05-05",
-    personId: "p1",
-    isRecurring: true,
-    recurrence: "mensal",
-    paymentMethod: "Boleto"
-  },
-  {
-    id: "ex-2",
-    name: "Supermercado Carrefour",
-    category: "Mercado",
-    isFixed: false,
-    amount: 1450.00,
-    date: "2026-05-12",
-    personId: "p2",
-    isRecurring: false,
-    recurrence: "eventual",
-    paymentMethod: "Crédito"
-  },
-  {
-    id: "ex-3",
-    name: "Conta de Energia Coelba",
-    category: "Energia",
-    isFixed: true,
-    amount: 320.00,
-    date: "2026-05-15",
-    personId: "p1",
-    isRecurring: true,
-    recurrence: "mensal",
-    paymentMethod: "Pix"
-  },
-  {
-    id: "ex-4",
-    name: "Plano de Internet de Fibra",
-    category: "Internet",
-    isFixed: true,
-    amount: 149.90,
-    date: "2026-05-01",
-    personId: "p2",
-    isRecurring: true,
-    recurrence: "mensal",
-    paymentMethod: "Débito"
-  },
-  {
-    id: "ex-5",
-    name: "Cinemas e Jantar de Lazer",
-    category: "Lazer",
-    isFixed: false,
-    amount: 450.00,
-    date: "2026-05-20",
-    personId: "p1",
-    isRecurring: false,
-    recurrence: "eventual",
-    paymentMethod: "Pix"
-  },
-  {
-    id: "ex-6",
-    name: "Farmácia e Medicamentos",
-    category: "Saúde",
-    isFixed: false,
-    amount: 190.00,
-    date: "2026-05-18",
-    personId: "p3",
-    isRecurring: false,
-    recurrence: "eventual",
-    paymentMethod: "Dinheiro"
-  }
-];
-
 const DEFAULT_SETTINGS: AlertSettings = {
   isEnabled: true,
   level: "moderate",
@@ -239,18 +99,23 @@ export default function App() {
 
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
+    // Se está autenticado, começa vazio e carrega do Firestore
+    if (isAuthenticated) return [];
+    // Senão, tenta localStorage (nunca vai usar DEFAULT_PEOPLE)
     const saved = localStorage.getItem("kashfam_people");
-    return saved ? JSON.parse(saved) : DEFAULT_PEOPLE;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [incomes, setIncomes] = useState<Income[]>(() => {
+    if (isAuthenticated) return [];
     const saved = localStorage.getItem("kashfam_incomes");
-    return saved ? JSON.parse(saved) : DEFAULT_INCOMES;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
+    if (isAuthenticated) return [];
     const saved = localStorage.getItem("kashfam_expenses");
-    return saved ? JSON.parse(saved) : DEFAULT_EXPENSES;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => {

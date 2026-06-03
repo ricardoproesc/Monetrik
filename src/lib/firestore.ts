@@ -180,9 +180,15 @@ export async function batchSaveItems<T extends { id: string }>(
 }
 
 // -------------------------------------------------------
-// Migração localStorage → Firestore
+// Migração localStorage → Firestore (uma única vez por UID)
 // -------------------------------------------------------
 export async function migrateFromLocalStorage(uid: string) {
+  // Verifica se migração já foi feita para esse UID
+  const migrationKey = `kashfam_migrated_${uid}`;
+  if (localStorage.getItem(migrationKey) === "true") {
+    return; // Já foi migrado, pula
+  }
+
   const keys: Record<string, string> = {
     kashfam_people: "people",
     kashfam_incomes: "incomes",
@@ -206,6 +212,9 @@ export async function migrateFromLocalStorage(uid: string) {
       localStorage.removeItem("kashfam_settings");
     } catch { /* */ }
   }
+
+  // Marca como migrado para esse UID
+  localStorage.setItem(migrationKey, "true");
 }
 
 // Compatibilidade (não usada com REST)

@@ -206,8 +206,8 @@ export default function TransactionsManager({
 
   const handleAddExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseName.trim()) {
-      setErrorMsg("Preencha o nome identificador da despesa (ex: Conta de luz excesso).");
+    if (!selectedExpenseSubcatId) {
+      setErrorMsg("Selecione uma subcategoria para o gasto. Clique em 'Configurar Subcategorias' para criar novas.");
       return;
     }
     const parsedAmount = parseFloat(expenseAmount);
@@ -408,7 +408,7 @@ export default function TransactionsManager({
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-zinc-700">Título do Gasto (Subcategoria)</label>
+                    <label className="block text-xs font-semibold text-zinc-700">Subcategoria do Gasto</label>
                     <button
                       type="button"
                       onClick={() => {
@@ -421,98 +421,43 @@ export default function TransactionsManager({
                       <Tag className="h-3 w-3 text-rose-500" /> Configurar Subcategorias
                     </button>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 font-sans">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={expenseName}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setExpenseName(val);
-                          // Try to find if user typed a name that maps exactly to a subcategory
-                          const matchSub = subcategories.find(s => s.type === 'expense' && s.name.toLowerCase() === val.trim().toLowerCase() && s.active !== false);
-                          if (matchSub) {
-                            setExpenseCategory(matchSub.category as any);
-                            setExpenseIsFixed(getCategoryNature(matchSub.category));
-                            setSelectedExpenseSubcatId(matchSub.id);
-                          } else {
-                            setSelectedExpenseSubcatId("");
-                          }
-                        }}
-                        placeholder="Ex: Compra Supermercado Assaí"
-                        className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-sans"
-                      />
-                    </div>
-                    
-                    <div className="sm:w-1/2">
-                      <select
-                        value={selectedExpenseSubcatId}
-                        aria-label="Selecionar Subcategoria"
-                        onChange={e => {
-                          const subId = e.target.value;
-                          setSelectedExpenseSubcatId(subId);
-                          if (subId) {
-                            const selectedSub = subcategories.find(s => s.id === subId);
-                            if (selectedSub) {
-                              setExpenseName(selectedSub.name);
-                              setExpenseCategory(selectedSub.category as any);
-                              setExpenseIsFixed(getCategoryNature(selectedSub.category));
-                            }
-                          } else {
-                            setExpenseName("");
-                          }
-                        }}
-                        className="w-full text-xs border border-zinc-200 bg-zinc-50 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-sans text-zinc-700 font-medium"
-                      >
-                        <option value="">⚡ Selecionar do Lançador...</option>
-                        {EXPENSE_CATEGORIES.map(cat => {
-                          const subsInCat = subcategories.filter(sub => sub.type === 'expense' && sub.category === cat && sub.active !== false);
-                          if (subsInCat.length === 0) return null;
-                          return (
-                            <optgroup key={cat} label={cat}>
-                              {subsInCat.map(sub => (
-                                <option key={sub.id} value={sub.id}>{sub.name}</option>
-                              ))}
-                            </optgroup>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Quick helper to save entered subcategory and avoid future typos */}
-                  <div className="mt-1.5 flex items-center justify-between gap-1.5 bg-zinc-50 p-2 rounded-lg border border-dashed border-zinc-200 font-sans">
-                    <span className="text-[9px] text-zinc-500 leading-snug flex items-center gap-1">
-                      <HelpCircle className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> 
-                      Salvar {expenseName ? `"${expenseName}"` : "este nome"} para evitar erros no mês seguinte?
-                    </span>
-                    {expenseName.trim() && !subcategories.some(s => s.type === 'expense' && s.category === expenseCategory && s.name.toLowerCase() === expenseName.trim().toLowerCase()) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newName = expenseName.trim();
-                          if (newName) {
-                            const newItem: SubcategoryItem = {
-                              id: "sub-custom-" + Date.now(),
-                              type: 'expense',
-                              category: expenseCategory,
-                              name: newName,
-                              active: true
-                            };
-                            const updated = [...subcategories, newItem];
-                            saveSubcategories(updated);
-                            setSelectedExpenseSubcatId(newItem.id);
-                            setExpenseIsFixed(getCategoryNature(expenseCategory));
-                          }
-                        }}
-                        className="text-[10px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold px-2 py-0.5 rounded cursor-pointer shrink-0 transition-colors"
-                      >
-                        + Cadastrar
-                      </button>
-                    ) : (
-                      <span className="text-[8px] text-zinc-400 italic shrink-0">Preenchido/Cadastrado</span>
-                    )}
-                  </div>
+                  <select
+                    value={selectedExpenseSubcatId}
+                    aria-label="Selecionar Subcategoria"
+                    onChange={e => {
+                      const subId = e.target.value;
+                      setSelectedExpenseSubcatId(subId);
+                      if (subId) {
+                        const selectedSub = subcategories.find(s => s.id === subId);
+                        if (selectedSub) {
+                          setExpenseName(selectedSub.name);
+                          setExpenseCategory(selectedSub.category as any);
+                          setExpenseIsFixed(getCategoryNature(selectedSub.category));
+                        }
+                      } else {
+                        setExpenseName("");
+                      }
+                    }}
+                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-sans text-zinc-700"
+                  >
+                    <option value="">Selecione uma subcategoria...</option>
+                    {EXPENSE_CATEGORIES.map(cat => {
+                      const subsInCat = subcategories.filter(sub => sub.type === 'expense' && sub.category === cat && sub.active !== false);
+                      if (subsInCat.length === 0) return null;
+                      return (
+                        <optgroup key={cat} label={cat}>
+                          {subsInCat.map(sub => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                  {subcategories.filter(s => s.type === 'expense' && s.active !== false).length === 0 && (
+                    <p className="text-[10px] text-amber-600 mt-1">
+                      Nenhuma subcategoria cadastrada. Clique em <strong>Configurar Subcategorias</strong> para adicionar.
+                    </p>
+                  )}
                 </div>
 
                 <div>

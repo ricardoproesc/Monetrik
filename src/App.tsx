@@ -197,9 +197,7 @@ export default function App() {
   const [authFeedback, setAuthFeedback] = useState("");
   const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'info' | ''>('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
-  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
-    return localStorage.getItem("kashfam_onboarded") === "true";
-  });
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(false);
 
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
@@ -250,6 +248,7 @@ export default function App() {
   const persistSession = (email: string) => {
     setIsAuthenticated(true);
     setSessionEmail(email);
+    setIsOnboarded(localStorage.getItem(`kashfam_onboarded_${email}`) === "true");
     localStorage.setItem("kashfam_auth", "true");
     localStorage.setItem("kashfam_email", email);
   };
@@ -266,13 +265,16 @@ export default function App() {
     if (!isFirebaseConfigured || !auth) return;
     return onAuthStateChanged(auth, (user) => {
       if (user && user.emailVerified) {
+        const email = user.email || "";
         setIsAuthenticated(true);
-        setSessionEmail(user.email || "");
+        setSessionEmail(email);
+        setIsOnboarded(localStorage.getItem(`kashfam_onboarded_${email}`) === "true");
         localStorage.setItem("kashfam_auth", "true");
-        localStorage.setItem("kashfam_email", user.email || "");
+        localStorage.setItem("kashfam_email", email);
       } else {
         setIsAuthenticated(false);
         setSessionEmail("");
+        setIsOnboarded(false);
         localStorage.removeItem("kashfam_auth");
         localStorage.removeItem("kashfam_email");
       }
@@ -420,14 +422,15 @@ export default function App() {
     setPeople([newPerson]);
     setIncomes([]);
     setExpenses([]);
-    localStorage.setItem("kashfam_onboarded", "true");
+    localStorage.setItem(`kashfam_onboarded_${sessionEmail}`, "true");
     setIsOnboarded(true);
   };
 
   const handleDemoBypass = () => {
-    localStorage.setItem("kashfam_onboarded", "true");
+    const demoEmail = "demo@monetrik.app";
+    localStorage.setItem(`kashfam_onboarded_${demoEmail}`, "true");
     setIsOnboarded(true);
-    persistSession("demo@monetrik.app");
+    persistSession(demoEmail);
   };
 
   const handleLogout = async () => {

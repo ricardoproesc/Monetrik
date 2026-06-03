@@ -201,7 +201,19 @@ export default function App() {
   const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
     const email = localStorage.getItem("kashfam_email");
     if (!email) return false;
-    return localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
+    if (localStorage.getItem(`kashfam_onboarded_${email}`) === "true") return true;
+    // Fallback: se já existe um familiar com nome real, pula o onboarding
+    try {
+      const saved = localStorage.getItem("kashfam_people");
+      if (saved) {
+        const people = JSON.parse(saved);
+        if (people.length > 0 && people[0].name !== "Titular da Família") {
+          localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+          return true;
+        }
+      }
+    } catch {}
+    return false;
   });
 
   // App core states
@@ -273,7 +285,20 @@ export default function App() {
         const email = user.email || "";
         setIsAuthenticated(true);
         setSessionEmail(email);
-        setIsOnboarded(localStorage.getItem(`kashfam_onboarded_${email}`) === "true");
+        let onboarded = localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
+        if (!onboarded) {
+          try {
+            const saved = localStorage.getItem("kashfam_people");
+            if (saved) {
+              const people = JSON.parse(saved);
+              if (people.length > 0 && people[0].name !== "Titular da Família") {
+                localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+                onboarded = true;
+              }
+            }
+          } catch {}
+        }
+        setIsOnboarded(onboarded);
         localStorage.setItem("kashfam_auth", "true");
         localStorage.setItem("kashfam_email", email);
       } else {

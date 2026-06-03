@@ -27,6 +27,7 @@ import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
 import TransactionsManager from "./components/TransactionsManager";
 import FinanceInsights from "./components/FinanceInsights";
+import UserProfile from "./components/UserProfile";
 import PanoramaGeral from "./components/PanoramaGeral";
 import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
@@ -34,7 +35,7 @@ import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
 import {
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
-  BookOpen, HelpCircle, LogOut, Mail, Lock, User, Check, AlertCircle, Menu, X, Loader
+  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -487,7 +488,17 @@ export default function App() {
   };
 
   // ─── Pessoas ────────────────────────────────────────────────────────────────
+  // Plano free: máximo 1 pessoa
+  const plan = "free"; // TODO: implementar sistema de planos real
+  const maxPeopleForPlan = plan === "free" ? 1 : Infinity;
+  const validPeople = people.filter(p => p.id);
+  const canAddMorePeople = validPeople.length < maxPeopleForPlan;
+
   const handleAddPerson = (newPerson: Omit<Person, 'id'>) => {
+    if (!canAddMorePeople) {
+      alert(`Plano Free permite apenas ${maxPeopleForPlan} pessoa. Upgrade para Premium para adicionar mais.`);
+      return;
+    }
     const person: Person = { ...newPerson, id: `p-${Date.now()}` };
     setPeople(prev => [...prev, person]);
     fs(() => savePerson(userId!, person));
@@ -937,25 +948,13 @@ export default function App() {
 
               </nav>
 
-              {/* Right Menu: User profile and Logout */}
+              {/* Right Menu: User profile */}
               <div className="flex items-center gap-3">
-                <div className="hidden lg:flex flex-col text-right">
-                  <span className="text-xs font-semibold text-zinc-900 leading-none">
-                    {principalPerson.name}
-                  </span>
-                  <span className="text-[10px] text-zinc-400 mt-1 leading-none">
-                    Titular Familiar
-                  </span>
-                </div>
-
-                <button
-                  onClick={handleLogout}
-                  id="btn-logout"
-                  className="p-2 border border-zinc-200 text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 rounded-xl transition-colors shrink-0"
-                  title="Sair do Sistema"
-                >
-                  <LogOut className="h-4.5 w-4.5" />
-                </button>
+                <UserProfile
+                  displayName={principalPerson.name}
+                  email={sessionEmail}
+                  onLogout={handleLogout}
+                />
 
                 {/* Mobile Menu Icon */}
                 <button
@@ -1034,6 +1033,8 @@ export default function App() {
             {activeTab === 'people' && (
               <PeopleManager
                 people={people}
+                canAddMore={canAddMorePeople}
+                plan={plan}
                 onAddPerson={handleAddPerson}
                 onToggleActive={handleToggleActivePerson}
                 onDeletePerson={handleDeletePerson}

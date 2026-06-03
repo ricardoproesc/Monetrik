@@ -9,6 +9,8 @@ import { Plus, Trash2, Mail, Phone, Calendar, User, Check, AlertCircle, Pencil, 
 
 interface PeopleManagerProps {
   people: Person[];
+  canAddMore: boolean;
+  plan: string;
   onAddPerson: (person: Omit<Person, 'id'>) => void;
   onToggleActive: (id: string) => void;
   onDeletePerson: (id: string) => void;
@@ -33,7 +35,7 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
   outro: "Outro"
 };
 
-export default function PeopleManager({ people, onAddPerson, onToggleActive, onDeletePerson, onUpdatePerson }: PeopleManagerProps) {
+export default function PeopleManager({ people, canAddMore, plan, onAddPerson, onToggleActive, onDeletePerson, onUpdatePerson }: PeopleManagerProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [name, setName] = useState("");
   const [gender, setGender] = useState<'masculino' | 'feminino' | 'outro'>("masculino");
@@ -157,12 +159,24 @@ export default function PeopleManager({ people, onAddPerson, onToggleActive, onD
           <p className="text-sm text-zinc-500 mt-0.5">Administre os membros da família responsáveis pelas receitas ou vinculados às despesas.</p>
         </div>
         <button
-          onClick={() => setShowAddForm(!showAddForm)}
+          onClick={() => {
+            if (!canAddMore) {
+              alert(`Plano ${plan} permite apenas 1 pessoa. Upgrade para Premium para adicionar mais.`);
+              return;
+            }
+            setShowAddForm(!showAddForm);
+          }}
           id="btn-add-person"
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-zinc-950 text-white hover:bg-zinc-800 transition-colors rounded-lg shadow-sm"
+          disabled={!canAddMore}
+          className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${
+            canAddMore
+              ? 'bg-zinc-950 text-white hover:bg-zinc-800'
+              : 'bg-zinc-300 text-zinc-500 cursor-not-allowed'
+          }`}
+          title={!canAddMore ? `Limite de pessoas atingido para o plano ${plan}` : ''}
         >
           <Plus className="h-4 w-4" />
-          Adicionar Integrante
+          {canAddMore ? 'Adicionar Integrante' : 'Limite atingido'}
         </button>
       </div>
 

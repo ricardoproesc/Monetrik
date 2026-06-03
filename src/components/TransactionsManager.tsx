@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { Income, Expense, Person, IncomeCategory, ExpenseCategory, PaymentMethod } from "../types";
-import { Plus, Trash2, Edit2, Search, Filter, ArrowUpRight, ArrowDownRight, Tag, HelpCircle, AlertCircle, ShoppingCart, X, Settings, Lock, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, Edit2, Search, Filter, ArrowUpRight, ArrowDownRight, Tag, AlertCircle, X, Lock, Eye, EyeOff } from "lucide-react";
 
 interface TransactionsManagerProps {
   people: Person[];
@@ -171,7 +171,6 @@ export default function TransactionsManager({
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomePerson, setIncomePerson] = useState(people[0]?.id || "");
   const [incomeCategory, setIncomeCategory] = useState<IncomeCategory>('Salário');
-  const [customIncomeCategory, setCustomIncomeCategory] = useState("");
   const [incomeDate, setIncomeDate] = useState(new Date().toISOString().split('T')[0]);
   const [incomeIsFixed, setIncomeIsFixed] = useState(true);
   const [incomeIsRecurring, setIncomeIsRecurring] = useState(true);
@@ -195,6 +194,10 @@ export default function TransactionsManager({
 
   const handleAddIncomeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedIncomeSubcatId) {
+      setErrorMsg("Selecione uma subcategoria para a receita. Clique em 'Configurar Subcategorias' para criar novas.");
+      return;
+    }
     const parsedAmount = parseFloat(incomeAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setErrorMsg("O valor da receita precisa ser um número maior que zero.");
@@ -205,9 +208,7 @@ export default function TransactionsManager({
       return;
     }
 
-    const categorySelected = incomeCategory === 'Outros' && customIncomeCategory.trim() 
-      ? customIncomeCategory.trim() 
-      : incomeCategory;
+    const categorySelected = incomeCategory;
 
     onAddIncome({
       personId: incomePerson,
@@ -222,7 +223,6 @@ export default function TransactionsManager({
 
     // Reset Form
     setIncomeAmount("");
-    setCustomIncomeCategory("");
     setIncomeNotes("");
     setIncomeCategory("Salário");
     setIncomeIsFixed(true);
@@ -674,31 +674,6 @@ export default function TransactionsManager({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Categoria de Entrada</label>
-                  <select
-                    value={incomeCategory}
-                    disabled={!!selectedIncomeSubcatId}
-                    onChange={e => {
-                      const newCat = e.target.value as any;
-                      setIncomeCategory(newCat);
-                      setIncomeIsFixed(getCategoryNature(newCat));
-                    }}
-                    className={`w-full text-xs border border-zinc-200 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 transition-all ${
-                      selectedIncomeSubcatId ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed font-medium' : 'bg-white text-zinc-800'
-                    }`}
-                  >
-                    {INCOME_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                  {selectedIncomeSubcatId && (
-                    <span className="text-[9px] text-zinc-400 mt-1 block font-sans">
-                      🔒 Vinculada à subcategoria selecionada.
-                    </span>
-                  )}
-                </div>
-
-                <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Familiar Beneficiado</label>
                   <select
                     value={incomePerson}
@@ -714,19 +689,6 @@ export default function TransactionsManager({
 
               </div>
 
-              {/* Custom Category input if other is selected */}
-              {incomeCategory === 'Outros' && (
-                <div className="animate-fade-in w-full text-xs font-sans">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Nome do Fluxo Customizado</label>
-                  <input
-                    type="text"
-                    value={customIncomeCategory}
-                    onChange={e => setCustomIncomeCategory(e.target.value)}
-                    placeholder="Ex: Pensão Alimentícia ou Venda Carro"
-                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400"
-                  />
-                </div>
-              )}
 
               {/* Recurrence config */}
               <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg space-y-2">
@@ -755,10 +717,10 @@ export default function TransactionsManager({
                 )}
               </div>
 
-              {/* Notes */}
+              {/* Subcategoria */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-zinc-700">Subcategoria / Origem do Fluxo (Notes)</label>
+                  <label className="block text-xs font-semibold text-zinc-700">Subcategoria da Receita</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -771,99 +733,43 @@ export default function TransactionsManager({
                     <Tag className="h-3 w-3 text-emerald-500" /> Configurar Subcategorias
                   </button>
                 </div>
-                
-                <div className="flex flex-col sm:flex-row gap-2 font-sans mb-2">
-                  <div className="relative flex-grow">
-                    <input
-                      type="text"
-                      value={incomeNotes}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setIncomeNotes(val);
-                        // Try to find if user typed a name that maps exactly to a subcategory
-                        const matchSub = subcategories.find(s => s.type === 'income' && s.name.toLowerCase() === val.trim().toLowerCase() && s.active !== false);
-                        if (matchSub) {
-                          setIncomeCategory(matchSub.category as any);
-                          setIncomeIsFixed(getCategoryNature(matchSub.category));
-                          setSelectedIncomeSubcatId(matchSub.id);
-                        } else {
-                          setSelectedIncomeSubcatId("");
-                        }
-                      }}
-                      placeholder="Ex: Salário Proesc ou Freelance DevXP"
-                      className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400"
-                    />
-                  </div>
-                  
-                  <div className="sm:w-1/2">
-                    <select
-                      value={selectedIncomeSubcatId}
-                      aria-label="Selecionar Subcategoria de Receita"
-                      onChange={e => {
-                        const subId = e.target.value;
-                        setSelectedIncomeSubcatId(subId);
-                        if (subId) {
-                          const selectedSub = subcategories.find(s => s.id === subId);
-                          if (selectedSub) {
-                            setIncomeNotes(selectedSub.name);
-                            setIncomeCategory(selectedSub.category as any);
-                            setIncomeIsFixed(getCategoryNature(selectedSub.category));
-                          }
-                        } else {
-                          setIncomeNotes("");
-                        }
-                      }}
-                      className="w-full text-xs border border-zinc-250 bg-zinc-50 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 text-zinc-700 font-medium"
-                    >
-                      <option value="">⚡ Selecionar do Lançador...</option>
-                      {INCOME_CATEGORIES.map(cat => {
-                        const subsInCat = subcategories.filter(sub => sub.type === 'income' && sub.category === cat && sub.active !== false);
-                        if (subsInCat.length === 0) return null;
-                        return (
-                          <optgroup key={cat} label={cat}>
-                            {subsInCat.map(sub => (
-                              <option key={sub.id} value={sub.id}>{sub.name}</option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Quick helper to save entered income subcategory and avoid future typos */}
-                <div className="flex items-center justify-between gap-1.5 bg-zinc-50 p-2 rounded-lg border border-dashed border-zinc-200 font-sans">
-                  <span className="text-[9px] text-zinc-500 leading-snug flex items-center gap-1">
-                    <HelpCircle className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> 
-                    Salvar {incomeNotes ? `"${incomeNotes}"` : "esta origem"} para evitar erros no mês seguinte?
-                  </span>
-                  {incomeNotes.trim() && !subcategories.some(s => s.type === 'income' && s.category === incomeCategory && s.name.toLowerCase() === incomeNotes.trim().toLowerCase()) ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newName = incomeNotes.trim();
-                        if (newName) {
-                          const newItem: SubcategoryItem = {
-                            id: "sub-custom-" + Date.now(),
-                            type: 'income',
-                            category: incomeCategory,
-                            name: newName,
-                            active: true
-                          };
-                          const updated = [...subcategories, newItem];
-                          saveSubcategories(updated);
-                          setSelectedIncomeSubcatId(newItem.id);
-                          setIncomeIsFixed(getCategoryNature(incomeCategory));
-                        }
-                      }}
-                      className="text-[10px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold px-2 py-0.5 rounded cursor-pointer shrink-0 transition-colors"
-                    >
-                      + Cadastrar
-                    </button>
-                  ) : (
-                    <span className="text-[8px] text-zinc-400 italic shrink-0 font-sans">Preenchido/Cadastrado</span>
-                  )}
-                </div>
+                <select
+                  value={selectedIncomeSubcatId}
+                  aria-label="Selecionar Subcategoria de Receita"
+                  onChange={e => {
+                    const subId = e.target.value;
+                    setSelectedIncomeSubcatId(subId);
+                    if (subId) {
+                      const selectedSub = subcategories.find(s => s.id === subId);
+                      if (selectedSub) {
+                        setIncomeNotes(selectedSub.name);
+                        setIncomeCategory(selectedSub.category as any);
+                        setIncomeIsFixed(getCategoryNature(selectedSub.category));
+                      }
+                    } else {
+                      setIncomeNotes("");
+                    }
+                  }}
+                  className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 text-zinc-700"
+                >
+                  <option value="">Selecione uma subcategoria...</option>
+                  {INCOME_CATEGORIES.map(cat => {
+                    const subsInCat = subcategories.filter(sub => sub.type === 'income' && sub.category === cat && sub.active !== false);
+                    if (subsInCat.length === 0) return null;
+                    return (
+                      <optgroup key={cat} label={cat}>
+                        {subsInCat.map(sub => (
+                          <option key={sub.id} value={sub.id}>{sub.name}</option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+                {subcategories.filter(s => s.type === 'income' && s.active !== false).length === 0 && (
+                  <p className="text-[10px] text-amber-600 mt-1">
+                    Nenhuma subcategoria cadastrada. Clique em <strong>Configurar Subcategorias</strong> para adicionar.
+                  </p>
+                )}
               </div>
 
               <button

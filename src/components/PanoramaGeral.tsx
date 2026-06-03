@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Person, Income, Expense, PaymentMethod } from "../types";
 import { 
   TrendingUp, TrendingDown, HelpCircle, DollarSign, Filter, 
@@ -30,12 +30,29 @@ const CHART_COLORS = ["#10b981", "#3b82f6", "#6366f1", "#f59e0b", "#f43f5e", "#0
 
 export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGeralProps) {
   
+  // Calcula anos disponíveis nos dados
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    incomes.forEach(i => years.add(new Date(i.date).getFullYear()));
+    expenses.forEach(e => years.add(new Date(e.date).getFullYear()));
+    const sorted = Array.from(years).sort((a, b) => a - b);
+    return sorted.length > 0 ? sorted : [new Date().getFullYear()];
+  }, [incomes, expenses]);
+
   // Filter states
-  const [filterYear, setFilterYear] = useState<string>("2026");
+  const [filterYear, setFilterYear] = useState<string>(() => String(availableYears[0]));
   const [filterPersonId, setFilterPersonId] = useState<string>("All");
   const [filterCategory, setFilterCategory] = useState<string>("All");
   const [filterType, setFilterType] = useState<string>("All"); // All | Fixed | Variable
   const [filterPeriod, setFilterPeriod] = useState<string>("All"); // All | Specific Month index (0-11)
+
+  // Sincroniza filterYear quando availableYears muda
+  useEffect(() => {
+    const currentYear = parseInt(filterYear);
+    if (!isNaN(currentYear) && !availableYears.includes(currentYear)) {
+      setFilterYear(String(availableYears[0]));
+    }
+  }, [availableYears, filterYear]);
 
   // Get list of unique categories from both income and expense for filters
   const allCategories = useMemo(() => {
@@ -172,7 +189,7 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
   };
 
   const clearAllFilters = () => {
-    setFilterYear("2026");
+    setFilterYear(String(availableYears[0]));
     setFilterPersonId("All");
     setFilterCategory("All");
     setFilterType("All");
@@ -206,9 +223,9 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
               onChange={e => setFilterYear(e.target.value)}
               className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none"
             >
-              <option value="2026">2026</option>
-              <option value="2025">2025</option>
-              <option value="2027">2027</option>
+              {availableYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
               <option value="All">Todos os Anos</option>
             </select>
           </div>

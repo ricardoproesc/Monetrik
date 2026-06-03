@@ -561,14 +561,26 @@ export default function App() {
     }
 
     if (userId) {
-      // Salva o novo perfil e remove placeholders que vieram da migração
+      // Remove dados default que vieram da migração
       (async () => {
         try {
-          const existing = await loadPeople(userId);
-          // Apaga todos exceto o p1 (pode ter p2=Cônjuge, p3=Filho do default)
+          const [people, incomes, expenses] = await Promise.all([
+            loadPeople(userId),
+            loadIncomes(userId).catch(() => []),
+            loadExpenses(userId).catch(() => [])
+          ]);
+
+          // Remove pessoas fake (Cônjuge, Filho)
           await Promise.all(
-            existing.filter(p => p.id !== "p1").map(p => deletePerson(userId, p.id))
+            people.filter(p => p.id !== "p1").map(p => deletePerson(userId, p.id))
           );
+
+          // Remove receitas e despesas default
+          await Promise.all([
+            ...incomes.map(inc => deleteIncome(userId, inc.id)),
+            ...expenses.map(exp => deleteExpense(userId, exp.id))
+          ]);
+
           await savePerson(userId, newPerson);
         } catch { /* */ }
       })();

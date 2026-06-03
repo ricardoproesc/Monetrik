@@ -344,10 +344,21 @@ export default function App() {
           ]);
 
           if (fsPeople.length > 0) {
-            setPeople(fsPeople);
-            if (!onboarded && fsPeople[0].name !== "Titular da Família") {
-              localStorage.setItem(`kashfam_onboarded_${email}`, "true");
-              setIsOnboarded(true);
+            const PLACEHOLDERS = ["Titular da Família", "Cônjuge", "Filho(a)"];
+            const realPeople = fsPeople.filter(p => !PLACEHOLDERS.includes(p.name));
+            const fakePeople = fsPeople.filter(p => PLACEHOLDERS.includes(p.name));
+
+            // Remove placeholders do Firestore silenciosamente
+            if (fakePeople.length > 0) {
+              fakePeople.forEach(p => deletePerson(uid, p.id).catch(() => {}));
+            }
+
+            if (realPeople.length > 0) {
+              setPeople(realPeople);
+              if (!onboarded) {
+                localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+                setIsOnboarded(true);
+              }
             }
           }
           if (fsIncomes.length > 0) setIncomes(fsIncomes);
@@ -544,10 +555,25 @@ export default function App() {
     setPeople([newPerson]);
     setIncomes([]);
     setExpenses([]);
+
     if (isFirebaseConfigured && auth?.currentUser) {
       updateProfile(auth.currentUser, { displayName: memberData.name }).catch(() => {});
     }
-    if (userId) savePerson(userId, newPerson).catch(() => {});
+
+    if (userId) {
+      // Salva o novo perfil e remove placeholders que vieram da migração
+      (async () => {
+        try {
+          const existing = await loadPeople(userId);
+          // Apaga todos exceto o p1 (pode ter p2=Cônjuge, p3=Filho do default)
+          await Promise.all(
+            existing.filter(p => p.id !== "p1").map(p => deletePerson(userId, p.id))
+          );
+          await savePerson(userId, newPerson);
+        } catch { /* */ }
+      })();
+    }
+
     localStorage.setItem(`kashfam_onboarded_${sessionEmail}`, "true");
     setIsOnboarded(true);
   };

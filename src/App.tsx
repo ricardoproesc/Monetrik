@@ -265,7 +265,7 @@ export default function App() {
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) return;
     return onAuthStateChanged(auth, (user) => {
-      if (user) {
+      if (user && user.emailVerified) {
         setIsAuthenticated(true);
         setSessionEmail(user.email || "");
         localStorage.setItem("kashfam_auth", "true");

@@ -24,7 +24,7 @@ export default function FinaPlanMatrix({ people, incomes, expenses }: FinaPlanMa
     const years = new Set<number>();
     incomes.forEach(i => years.add(new Date(i.date).getFullYear()));
     expenses.forEach(e => years.add(new Date(e.date).getFullYear()));
-    const sorted = Array.from(years).sort();
+    const sorted = Array.from(years).sort((a, b) => a - b);
     return sorted.length > 0 ? sorted : [new Date().getFullYear()];
   }, [incomes, expenses]);
 

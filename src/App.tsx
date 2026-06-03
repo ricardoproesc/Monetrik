@@ -766,18 +766,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Demo Quick Bypass Button (Great UX decision) */}
-            <div className="pt-2 text-center text-xs">
-              <span className="text-zinc-400 text-[10px] block mb-2">Quer apenas avaliar o sistema com dados predefinidos?</span>
-              <button
-                type="button"
-                onClick={handleDemoBypass}
-                id="btn-demo-bypass"
-                className="inline-flex py-2 px-4 rounded-xl border border-zinc-300 bg-white font-semibold text-zinc-700 hover:bg-zinc-100 text-[11px] items-center justify-center cursor-pointer transition-colors"
-              >
-                Entrar com Modo Demonstração (XP Família)
-              </button>
-            </div>
 
           </div>
         </div>

@@ -314,6 +314,25 @@ export default function App() {
     }
   };
 
+  // ─── Validação de senha (padrão NIST/OWASP) ────────────────────────────────
+  const passwordRules = [
+    { label: "Mínimo 8 caracteres",      test: (p: string) => p.length >= 8 },
+    { label: "Uma letra maiúscula (A-Z)", test: (p: string) => /[A-Z]/.test(p) },
+    { label: "Uma letra minúscula (a-z)", test: (p: string) => /[a-z]/.test(p) },
+    { label: "Um número (0-9)",           test: (p: string) => /[0-9]/.test(p) },
+    { label: "Um símbolo (!@#$...)",      test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+  ];
+
+  const getPasswordStrength = (p: string) => {
+    const passed = passwordRules.filter(r => r.test(p)).length;
+    if (passed <= 2) return { label: "Fraca",   color: "bg-red-500",    width: "w-1/5" };
+    if (passed === 3) return { label: "Regular", color: "bg-amber-400",  width: "w-3/5" };
+    if (passed === 4) return { label: "Boa",     color: "bg-blue-500",   width: "w-4/5" };
+    return                   { label: "Forte",   color: "bg-emerald-500",width: "w-full" };
+  };
+
+  const isPasswordValid = (p: string) => passwordRules.every(r => r.test(p));
+
   // ─── Cadastro ────────────────────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,8 +341,8 @@ export default function App() {
       setAuthStatus('error');
       return;
     }
-    if (passInput.trim().length < 6) {
-      setAuthFeedback("A senha precisa ter no mínimo 6 caracteres.");
+    if (!isPasswordValid(passInput)) {
+      setAuthFeedback("A senha não atende aos requisitos mínimos de segurança.");
       setAuthStatus('error');
       return;
     }
@@ -629,16 +648,46 @@ export default function App() {
                       type="password"
                       value={passInput}
                       onChange={e => setPassInput(e.target.value)}
-                      placeholder="Mínimo 6 dígitos"
+                      placeholder="Ex: Monetrik@2026"
                       className="w-full text-xs border border-zinc-200 bg-white rounded-xl pl-10 pr-3 py-3 focus:outline-none focus:border-zinc-400"
                     />
                   </div>
+
+                  {/* Barra de força da senha */}
+                  {passInput.length > 0 && (() => {
+                    const strength = getPasswordStrength(passInput);
+                    return (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center justify-between">
+                          <div className="h-1.5 flex-1 bg-zinc-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-300 ${strength.color} ${strength.width}`} />
+                          </div>
+                          <span className={`text-[10px] font-semibold ml-2 ${
+                            strength.label === 'Fraca' ? 'text-red-500' :
+                            strength.label === 'Regular' ? 'text-amber-500' :
+                            strength.label === 'Boa' ? 'text-blue-500' : 'text-emerald-600'
+                          }`}>{strength.label}</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-0.5">
+                          {passwordRules.map((rule, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <div className={`h-3 w-3 rounded-full flex items-center justify-center shrink-0 ${rule.test(passInput) ? 'bg-emerald-500' : 'bg-zinc-200'}`}>
+                                {rule.test(passInput) && <Check className="h-2 w-2 text-white" />}
+                              </div>
+                              <span className={`text-[10px] ${rule.test(passInput) ? 'text-emerald-700' : 'text-zinc-400'}`}>{rule.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <button
                   type="submit"
                   id="btn-auth-submit-register"
-                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold transition-colors"
+                  disabled={passInput.length > 0 && !isPasswordValid(passInput)}
+                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-colors"
                 >
                   Registrar e Enviar E-mail
                 </button>

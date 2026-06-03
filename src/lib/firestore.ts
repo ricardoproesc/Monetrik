@@ -70,7 +70,15 @@ export async function loadIncomes(uid: string): Promise<Income[]> {
 // Expenses
 // -------------------------------------------------------
 export async function saveExpense(uid: string, expense: Expense) {
-  await setDoc(doc(col(uid, "expenses"), expense.id), clean(expense));
+  const cleaned = clean(expense);
+  console.log("[FS] saveExpense →", { uid, id: expense.id, db: !!db, cleaned });
+  try {
+    await setDoc(doc(col(uid, "expenses"), expense.id), cleaned);
+    console.log("[FS] saveExpense OK");
+  } catch (e) {
+    console.error("[FS] saveExpense FALHOU:", e);
+    throw e;
+  }
 }
 
 export async function deleteExpense(uid: string, expenseId: string) {

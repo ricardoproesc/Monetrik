@@ -370,13 +370,14 @@ export default function PeopleManager({ people, onAddPerson, onToggleActive, onD
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 {/* Delete option - prevent deleting index-0 main owner directly without warning */}
-                {person.relationship !== 'principal' && (
+                {(person.relationship !== 'principal' || !person.name) && (
                   <button
                     onClick={() => setPersonToDeleteId(person.id)}
-                    className="p-1 px-1.5 text-zinc-400 hover:text-red-500 rounded hover:bg-red-50 transition-colors"
+                    className="text-[10px] font-semibold px-2 py-1 rounded text-red-600 hover:bg-red-50 transition-colors flex items-center gap-1"
                     title="Excluir Integrante"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
+                    Remover
                   </button>
                 )}
                 <button

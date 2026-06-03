@@ -194,10 +194,15 @@ export default function App() {
   const [emailInput, setEmailInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [passInput, setPassInput] = useState("");
+  const [confirmPassInput, setConfirmPassInput] = useState("");
   const [authFeedback, setAuthFeedback] = useState("");
   const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'info' | ''>('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
-  const [isOnboarded, setIsOnboarded] = useState<boolean>(false);
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
+    const email = localStorage.getItem("kashfam_email");
+    if (!email) return false;
+    return localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
+  });
 
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
@@ -342,8 +347,13 @@ export default function App() {
   // ─── Cadastro ────────────────────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim() || !passInput.trim()) {
+    if (!emailInput.trim() || !passInput.trim() || !confirmPassInput.trim()) {
       setAuthFeedback("Por favor, preencha todos os campos do cadastro.");
+      setAuthStatus('error');
+      return;
+    }
+    if (passInput !== confirmPassInput) {
+      setAuthFeedback("As senhas não coincidem. Verifique e tente novamente.");
       setAuthStatus('error');
       return;
     }
@@ -699,10 +709,39 @@ export default function App() {
                   })()}
                 </div>
 
+                {/* Confirmar senha */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-700">Confirmar Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4.5 w-4.5 text-zinc-400" />
+                    <input
+                      type="password"
+                      value={confirmPassInput}
+                      onChange={e => setConfirmPassInput(e.target.value)}
+                      placeholder="Digite a senha novamente"
+                      className={`w-full text-xs border rounded-xl pl-10 pr-3 py-3 focus:outline-none transition-colors ${
+                        confirmPassInput.length > 0
+                          ? passInput === confirmPassInput
+                            ? "border-emerald-400 bg-emerald-50/30 focus:border-emerald-500"
+                            : "border-red-300 bg-red-50/30 focus:border-red-400"
+                          : "border-zinc-200 bg-white focus:border-zinc-400"
+                      }`}
+                    />
+                    {confirmPassInput.length > 0 && (
+                      <span className={`absolute right-3 top-3 text-xs font-semibold ${passInput === confirmPassInput ? "text-emerald-600" : "text-red-500"}`}>
+                        {passInput === confirmPassInput ? "✓" : "✗"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   id="btn-auth-submit-register"
-                  disabled={passInput.length > 0 && !isPasswordValid(passInput)}
+                  disabled={
+                    (passInput.length > 0 && !isPasswordValid(passInput)) ||
+                    (confirmPassInput.length > 0 && passInput !== confirmPassInput)
+                  }
                   className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-colors"
                 >
                   Registrar e Enviar E-mail

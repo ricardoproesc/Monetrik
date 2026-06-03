@@ -44,26 +44,52 @@ export interface SubcategoryItem {
 }
 
 const DEFAULT_SUBCATEGORIES: SubcategoryItem[] = [
-  // Incomes
-  { id: "sub-in-1", type: "income", category: "Salário", name: "Salário Proesc" },
-  { id: "sub-in-2", type: "income", category: "Salário", name: "Salário CLT Fixo" },
-  { id: "sub-in-3", type: "income", category: "Salário", name: "Pró-labore Diretor" },
-  { id: "sub-in-4", type: "income", category: "Freelance", name: "Consultoria DevXP" },
-  { id: "sub-in-5", type: "income", category: "Freelance", name: "Projeto UI/UX design" },
-  { id: "sub-in-6", type: "income", category: "Renda Extra", name: "Venda Desapego OLX" },
-  { id: "sub-in-7", type: "income", category: "Investimentos", name: "Rendimento FIIs" },
-  
-  // Expenses
-  { id: "sub-ex-1", type: "expense", category: "Mercado", name: "Supermercado Assaí" },
-  { id: "sub-ex-2", type: "expense", category: "Mercado", name: "Supermercado Carrefour" },
-  { id: "sub-ex-3", type: "expense", category: "Mercado", name: "Feira de Orgânicos" },
-  { id: "sub-ex-4", type: "expense", category: "Energia", name: "Conta Coelba" },
-  { id: "sub-ex-5", type: "expense", category: "Energia", name: "Conta Eletropaulo" },
-  { id: "sub-ex-6", type: "expense", category: "Lazer", name: "Cinema e Shopping" },
-  { id: "sub-ex-7", type: "expense", category: "Lazer", name: "Restaurante Fim de Semana" },
-  { id: "sub-ex-8", type: "expense", category: "Saúde", name: "Farmácia Droga Raia" },
-  { id: "sub-ex-9", type: "expense", category: "Internet", name: "Internet de Fibra Claro" },
-  { id: "sub-ex-10", type: "expense", category: "Aluguel", name: "Aluguel Residência" },
+  // Receitas
+  { id: "sub-in-1",  type: "income",  category: "Salário",      name: "Salário Mensal" },
+  { id: "sub-in-2",  type: "income",  category: "Salário",      name: "13º Salário" },
+  { id: "sub-in-3",  type: "income",  category: "Freelance",    name: "Freelance / Consultoria" },
+  { id: "sub-in-4",  type: "income",  category: "Renda Extra",  name: "Renda Extra" },
+  { id: "sub-in-5",  type: "income",  category: "Investimentos",name: "Rendimento Investimentos" },
+  { id: "sub-in-6",  type: "income",  category: "Benefícios",   name: "Benefício / Auxílio" },
+
+  // Despesas — Moradia
+  { id: "sub-ex-1",  type: "expense", category: "Aluguel",          name: "Aluguel Residência" },
+  { id: "sub-ex-2",  type: "expense", category: "Energia",          name: "Conta Energia Casa" },
+  { id: "sub-ex-3",  type: "expense", category: "Água",             name: "Conta Água / Saneamento" },
+  { id: "sub-ex-4",  type: "expense", category: "Internet",         name: "Internet Casa" },
+  { id: "sub-ex-5",  type: "expense", category: "Internet",         name: "Plano Celular" },
+
+  // Despesas — Alimentação
+  { id: "sub-ex-6",  type: "expense", category: "Mercado",          name: "Supermercado" },
+  { id: "sub-ex-7",  type: "expense", category: "Mercado",          name: "Feira / Hortifruti" },
+  { id: "sub-ex-8",  type: "expense", category: "Mercado",          name: "Padaria / Açougue" },
+
+  // Despesas — Transporte
+  { id: "sub-ex-9",  type: "expense", category: "Transporte",       name: "Combustível" },
+  { id: "sub-ex-10", type: "expense", category: "Transporte",       name: "Transporte Público" },
+  { id: "sub-ex-11", type: "expense", category: "Transporte",       name: "Aplicativo (Uber/99)" },
+  { id: "sub-ex-12", type: "expense", category: "Transporte",       name: "Manutenção Veículo" },
+
+  // Despesas — Saúde
+  { id: "sub-ex-13", type: "expense", category: "Saúde",            name: "Farmácia" },
+  { id: "sub-ex-14", type: "expense", category: "Saúde",            name: "Consulta Médica" },
+  { id: "sub-ex-15", type: "expense", category: "Saúde",            name: "Plano de Saúde" },
+  { id: "sub-ex-16", type: "expense", category: "Saúde",            name: "Academia / Esportes" },
+
+  // Despesas — Educação
+  { id: "sub-ex-17", type: "expense", category: "Educação",         name: "Escola / Colégio" },
+  { id: "sub-ex-18", type: "expense", category: "Educação",         name: "Faculdade / Curso" },
+  { id: "sub-ex-19", type: "expense", category: "Educação",         name: "Material Escolar" },
+
+  // Despesas — Lazer
+  { id: "sub-ex-20", type: "expense", category: "Lazer",            name: "Restaurante / Lanchonete" },
+  { id: "sub-ex-21", type: "expense", category: "Lazer",            name: "Cinema / Entretenimento" },
+  { id: "sub-ex-22", type: "expense", category: "Lazer",            name: "Assinatura Streaming" },
+  { id: "sub-ex-23", type: "expense", category: "Lazer",            name: "Viagem / Passeio" },
+
+  // Despesas — Cartão e Outros
+  { id: "sub-ex-24", type: "expense", category: "Cartão de Crédito",name: "Fatura Cartão de Crédito" },
+  { id: "sub-ex-25", type: "expense", category: "Outros",           name: "Outros Gastos" },
 ];
 
 export default function TransactionsManager({

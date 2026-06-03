@@ -14,6 +14,13 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { auth, isFirebaseConfigured } from "./lib/firebase";
+import {
+  loadPeople, savePerson, deletePerson,
+  loadIncomes, saveIncome, deleteIncome,
+  loadExpenses, saveExpense, deleteExpense,
+  loadSettings, saveSettings as fsaveSettings,
+  migrateFromLocalStorage, batchSaveItems,
+} from "./lib/firestore";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
 import TransactionsManager from "./components/TransactionsManager";
@@ -188,6 +195,7 @@ export default function App() {
   const [sessionEmail, setSessionEmail] = useState<string>(() => {
     return localStorage.getItem("kashfam_email") || "";
   });
+  const [userId, setUserId] = useState<string | null>(null);
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot'>('login');
   
   // Auth Form Fields
@@ -259,7 +267,10 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("kashfam_settings", JSON.stringify(alertSettings));
-  }, [alertSettings]);
+    if (userId && isFirebaseConfigured) {
+      fsaveSettings(userId, alertSettings).catch(() => {});
+    }
+  }, [alertSettings, userId]);
 
   // ─── helpers de sessão local ───────────────────────────────────────────────
   const persistSession = (email: string) => {
@@ -281,33 +292,63 @@ export default function App() {
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) return;
     return onAuthStateChanged(auth, (user) => {
-      if (user && user.emailVerified) {
-        const email = user.email || "";
-        setIsAuthenticated(true);
-        setSessionEmail(email);
-        let onboarded = localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
-        if (!onboarded) {
-          try {
-            const saved = localStorage.getItem("kashfam_people");
-            if (saved) {
-              const people = JSON.parse(saved);
-              if (people.length > 0 && people[0].name !== "Titular da Família") {
-                localStorage.setItem(`kashfam_onboarded_${email}`, "true");
-                onboarded = true;
+      (async () => {
+        if (user && user.emailVerified) {
+          const email = user.email || "";
+          const uid = user.uid;
+          setIsAuthenticated(true);
+          setSessionEmail(email);
+          setUserId(uid);
+          localStorage.setItem("kashfam_auth", "true");
+          localStorage.setItem("kashfam_email", email);
+
+          // Onboarding flag
+          let onboarded = localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
+          if (!onboarded) {
+            try {
+              const saved = localStorage.getItem("kashfam_people");
+              if (saved) {
+                const p = JSON.parse(saved);
+                if (p.length > 0 && p[0].name !== "Titular da Família") {
+                  localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+                  onboarded = true;
+                }
               }
+            } catch {}
+          }
+          setIsOnboarded(onboarded);
+
+          // Migrar localStorage → Firestore (só na primeira vez)
+          await migrateFromLocalStorage(uid).catch(() => {});
+
+          // Carregar dados do Firestore
+          const [fsPeople, fsIncomes, fsExpenses, fsSettings] = await Promise.all([
+            loadPeople(uid).catch(() => [] as Person[]),
+            loadIncomes(uid).catch(() => [] as Income[]),
+            loadExpenses(uid).catch(() => [] as Expense[]),
+            loadSettings(uid).catch(() => null),
+          ]);
+
+          if (fsPeople.length > 0) {
+            setPeople(fsPeople);
+            if (!onboarded && fsPeople[0].name !== "Titular da Família") {
+              localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+              setIsOnboarded(true);
             }
-          } catch {}
+          }
+          if (fsIncomes.length > 0) setIncomes(fsIncomes);
+          if (fsExpenses.length > 0) setExpenses(fsExpenses);
+          if (fsSettings) setAlertSettings(fsSettings);
+
+        } else {
+          setIsAuthenticated(false);
+          setSessionEmail("");
+          setUserId(null);
+          setIsOnboarded(false);
+          localStorage.removeItem("kashfam_auth");
+          localStorage.removeItem("kashfam_email");
         }
-        setIsOnboarded(onboarded);
-        localStorage.setItem("kashfam_auth", "true");
-        localStorage.setItem("kashfam_email", email);
-      } else {
-        setIsAuthenticated(false);
-        setSessionEmail("");
-        setIsOnboarded(false);
-        localStorage.removeItem("kashfam_auth");
-        localStorage.removeItem("kashfam_email");
-      }
+      })();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -451,15 +492,21 @@ export default function App() {
     }
   };
 
+  // Helper: chama Firestore só se disponível, sem travar o app em erros
+  const fs = async (fn: () => Promise<void>) => {
+    if (!userId || !isFirebaseConfigured) return;
+    fn().catch(e => console.error("Firestore sync:", e));
+  };
+
   const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
     const newPerson: import("./types").Person = { ...memberData, id: "p1" };
     setPeople([newPerson]);
     setIncomes([]);
     setExpenses([]);
-    // Salva o nome no Firebase Auth para uso futuro
     if (isFirebaseConfigured && auth?.currentUser) {
       updateProfile(auth.currentUser, { displayName: memberData.name }).catch(() => {});
     }
+    if (userId) savePerson(userId, newPerson).catch(() => {});
     localStorage.setItem(`kashfam_onboarded_${sessionEmail}`, "true");
     setIsOnboarded(true);
   };
@@ -480,68 +527,47 @@ export default function App() {
     setAuthStatus('');
   };
 
-  // State modifier wrappers
+  // ─── Pessoas ────────────────────────────────────────────────────────────────
   const handleAddPerson = (newPerson: Omit<Person, 'id'>) => {
-    const person: Person = {
-      ...newPerson,
-      id: `p-${Date.now()}`
-    };
+    const person: Person = { ...newPerson, id: `p-${Date.now()}` };
     setPeople(prev => [...prev, person]);
+    fs(() => savePerson(userId!, person));
   };
 
   const handleToggleActivePerson = (id: string) => {
-    setPeople(prev => prev.map(p => p.id === id ? { ...p, active: !p.active } : p));
+    setPeople(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const updated = { ...p, active: !p.active };
+      fs(() => savePerson(userId!, updated));
+      return updated;
+    }));
   };
 
   const handleDeletePerson = (id: string) => {
     setPeople(prev => prev.filter(p => p.id !== id));
+    fs(() => deletePerson(userId!, id));
   };
 
   const handleUpdatePerson = (updated: Person) => {
     setPeople(prev => prev.map(p => p.id === updated.id ? updated : p));
+    fs(() => savePerson(userId!, updated));
   };
 
+  // ─── Receitas ───────────────────────────────────────────────────────────────
   const handleAddIncome = (newIncome: Omit<Income, 'id'>) => {
-    const income: Income = {
-      ...newIncome,
-      id: `in-${Date.now()}`
-    };
+    const income: Income = { ...newIncome, id: `in-${Date.now()}` };
     setIncomes(prev => [...prev, income]);
-  };
-
-  const handleAddExpense = (newExpense: Omit<Expense, 'id'>) => {
-    const expense: Expense = {
-      ...newExpense,
-      id: `ex-${Date.now()}`
-    };
-    setExpenses(prev => [...prev, expense]);
+    fs(() => saveIncome(userId!, income));
   };
 
   const handleDeleteIncome = (id: string) => {
     setIncomes(prev => prev.filter(inc => inc.id !== id));
-  };
-
-  const handleDeleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(exp => exp.id !== id));
+    fs(() => deleteIncome(userId!, id));
   };
 
   const handleUpdateIncome = (updated: Income) => {
     setIncomes(prev => prev.map(inc => inc.id === updated.id ? updated : inc));
-  };
-
-  const handleUpdateExpense = (updated: Expense) => {
-    setExpenses(prev => prev.map(exp => exp.id === updated.id ? updated : exp));
-  };
-
-  const handleBulkUpdateExpenses = (updatedList: Expense[]) => {
-    setExpenses(prev => prev.map(exp => {
-      const match = updatedList.find(u => u.id === exp.id);
-      return match ? match : exp;
-    }));
-  };
-
-  const handleBulkDeleteExpenses = (idsToDelete: string[]) => {
-    setExpenses(prev => prev.filter(exp => !idsToDelete.includes(exp.id)));
+    fs(() => saveIncome(userId!, updated));
   };
 
   const handleBulkUpdateIncomes = (updatedList: Income[]) => {
@@ -549,10 +575,42 @@ export default function App() {
       const match = updatedList.find(u => u.id === inc.id);
       return match ? match : inc;
     }));
+    fs(() => batchSaveItems(userId!, "incomes", updatedList));
   };
 
   const handleBulkDeleteIncomes = (idsToDelete: string[]) => {
     setIncomes(prev => prev.filter(inc => !idsToDelete.includes(inc.id)));
+    fs(async () => { for (const id of idsToDelete) await deleteIncome(userId!, id); });
+  };
+
+  // ─── Despesas ───────────────────────────────────────────────────────────────
+  const handleAddExpense = (newExpense: Omit<Expense, 'id'>) => {
+    const expense: Expense = { ...newExpense, id: `ex-${Date.now()}` };
+    setExpenses(prev => [...prev, expense]);
+    fs(() => saveExpense(userId!, expense));
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    setExpenses(prev => prev.filter(exp => exp.id !== id));
+    fs(() => deleteExpense(userId!, id));
+  };
+
+  const handleUpdateExpense = (updated: Expense) => {
+    setExpenses(prev => prev.map(exp => exp.id === updated.id ? updated : exp));
+    fs(() => saveExpense(userId!, updated));
+  };
+
+  const handleBulkUpdateExpenses = (updatedList: Expense[]) => {
+    setExpenses(prev => prev.map(exp => {
+      const match = updatedList.find(u => u.id === exp.id);
+      return match ? match : exp;
+    }));
+    fs(() => batchSaveItems(userId!, "expenses", updatedList));
+  };
+
+  const handleBulkDeleteExpenses = (idsToDelete: string[]) => {
+    setExpenses(prev => prev.filter(exp => !idsToDelete.includes(exp.id)));
+    fs(async () => { for (const id of idsToDelete) await deleteExpense(userId!, id); });
   };
 
   // Aggregated live KPIs for Main Dashboard Grid

@@ -66,6 +66,33 @@ export async function loadIncomes(uid: string): Promise<Income[]> {
 export async function saveExpense(uid: string, expense: Expense) {
   const cleaned = clean(expense);
   console.log("[FS] saveExpense →", uid, expense.id);
+
+  // Teste REST para diagnóstico de conectividade
+  try {
+    const { getAuth } = await import("firebase/auth");
+    const currentUser = getAuth().currentUser;
+    const token = await currentUser?.getIdToken();
+    if (token) {
+      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}/expenses?documentId=${expense.id}`;
+      const fields: Record<string, unknown> = {};
+      Object.entries(cleaned).forEach(([k, v]) => {
+        if (typeof v === "string") fields[k] = { stringValue: v };
+        else if (typeof v === "number") fields[k] = { doubleValue: v };
+        else if (typeof v === "boolean") fields[k] = { booleanValue: v };
+      });
+      const res = await fetch(restUrl, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fields }),
+      });
+      console.log("[FS REST]", res.status, await res.text());
+      if (res.ok) { console.log("[FS REST] OK ✓ — REST API funciona!"); return; }
+    }
+  } catch (e) {
+    console.error("[FS REST] erro:", e);
+  }
+
   await setDoc(doc(db!, "users", uid, "expenses", expense.id), cleaned);
   console.log("[FS] saveExpense OK ✓");
 }

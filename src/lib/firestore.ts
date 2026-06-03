@@ -6,16 +6,17 @@ import {
   deleteDoc,
   writeBatch,
   onSnapshot,
+  getFirestore,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { auth } from "./firebase";
 import type { Person, Income, Expense, AlertSettings } from "../types";
 
-// -------------------------------------------------------
-// Helpers de caminho
-// -------------------------------------------------------
-const userRef = (uid: string) => doc(db, "users", uid);
-const col = (uid: string, name: string) => collection(db, "users", uid, name);
+// Obtém sempre uma instância fresca do Firestore (evita problemas de módulo)
+const getDB = () => {
+  if (!auth?.app) throw new Error("Firebase app não inicializado");
+  return getFirestore(auth.app);
+};
 
 // Remove campos undefined — Firestore não aceita undefined
 const clean = <T extends object>(obj: T): T =>
@@ -25,10 +26,12 @@ const clean = <T extends object>(obj: T): T =>
 // Settings
 // -------------------------------------------------------
 export async function saveSettings(uid: string, settings: AlertSettings) {
+  const db = getDB();
   await setDoc(doc(db, "users", uid, "meta", "settings"), clean(settings));
 }
 
 export async function loadSettings(uid: string): Promise<AlertSettings | null> {
+  const db = getDB();
   const { getDoc } = await import("firebase/firestore");
   const snap = await getDoc(doc(db, "users", uid, "meta", "settings"));
   return snap.exists() ? (snap.data() as AlertSettings) : null;
@@ -38,15 +41,18 @@ export async function loadSettings(uid: string): Promise<AlertSettings | null> {
 // People
 // -------------------------------------------------------
 export async function savePerson(uid: string, person: Person) {
-  await setDoc(doc(col(uid, "people"), person.id), clean(person));
+  const db = getDB();
+  await setDoc(doc(db, "users", uid, "people", person.id), clean(person));
 }
 
 export async function deletePerson(uid: string, personId: string) {
-  await deleteDoc(doc(col(uid, "people"), personId));
+  const db = getDB();
+  await deleteDoc(doc(db, "users", uid, "people", personId));
 }
 
 export async function loadPeople(uid: string): Promise<Person[]> {
-  const snap = await getDocs(col(uid, "people"));
+  const db = getDB();
+  const snap = await getDocs(collection(db, "users", uid, "people"));
   return snap.docs.map((d) => d.data() as Person);
 }
 
@@ -54,15 +60,18 @@ export async function loadPeople(uid: string): Promise<Person[]> {
 // Incomes
 // -------------------------------------------------------
 export async function saveIncome(uid: string, income: Income) {
-  await setDoc(doc(col(uid, "incomes"), income.id), clean(income));
+  const db = getDB();
+  await setDoc(doc(db, "users", uid, "incomes", income.id), clean(income));
 }
 
 export async function deleteIncome(uid: string, incomeId: string) {
-  await deleteDoc(doc(col(uid, "incomes"), incomeId));
+  const db = getDB();
+  await deleteDoc(doc(db, "users", uid, "incomes", incomeId));
 }
 
 export async function loadIncomes(uid: string): Promise<Income[]> {
-  const snap = await getDocs(col(uid, "incomes"));
+  const db = getDB();
+  const snap = await getDocs(collection(db, "users", uid, "incomes"));
   return snap.docs.map((d) => d.data() as Income);
 }
 
@@ -70,35 +79,34 @@ export async function loadIncomes(uid: string): Promise<Income[]> {
 // Expenses
 // -------------------------------------------------------
 export async function saveExpense(uid: string, expense: Expense) {
+  const db = getDB();
   const cleaned = clean(expense);
-  console.log("[FS] saveExpense →", { uid, id: expense.id, db: !!db, cleaned });
-  try {
-    await setDoc(doc(col(uid, "expenses"), expense.id), cleaned);
-    console.log("[FS] saveExpense OK");
-  } catch (e) {
-    console.error("[FS] saveExpense FALHOU:", e);
-    throw e;
-  }
+  console.log("[FS] saveExpense →", { uid, id: expense.id, db: !!db });
+  await setDoc(doc(db, "users", uid, "expenses", expense.id), cleaned);
+  console.log("[FS] saveExpense OK ✓");
 }
 
 export async function deleteExpense(uid: string, expenseId: string) {
-  await deleteDoc(doc(col(uid, "expenses"), expenseId));
+  const db = getDB();
+  await deleteDoc(doc(db, "users", uid, "expenses", expenseId));
 }
 
 export async function loadExpenses(uid: string): Promise<Expense[]> {
-  const snap = await getDocs(col(uid, "expenses"));
+  const db = getDB();
+  const snap = await getDocs(collection(db, "users", uid, "expenses"));
   return snap.docs.map((d) => d.data() as Expense);
 }
 
 // -------------------------------------------------------
-// Listener em tempo real para toda a coleção de um usuário
+// Listener em tempo real
 // -------------------------------------------------------
 export function subscribeToCollection<T>(
   uid: string,
   name: string,
   onData: (items: T[]) => void
 ): Unsubscribe {
-  return onSnapshot(col(uid, name), (snap) => {
+  const db = getDB();
+  return onSnapshot(collection(db, "users", uid, name), (snap) => {
     onData(snap.docs.map((d) => d.data() as T));
   });
 }
@@ -111,16 +119,18 @@ export async function batchSaveItems<T extends { id: string }>(
   collectionName: string,
   items: T[]
 ) {
+  if (items.length === 0) return;
+  const db = getDB();
   const batch = writeBatch(db);
   items.forEach((item) => {
-    const ref = doc(col(uid, collectionName), item.id);
+    const ref = doc(db, "users", uid, collectionName, item.id);
     batch.set(ref, clean(item));
   });
   await batch.commit();
 }
 
 // -------------------------------------------------------
-// Migração localStorage → Firestore (executar uma vez)
+// Migração localStorage → Firestore
 // -------------------------------------------------------
 export async function migrateFromLocalStorage(uid: string) {
   const keys: Record<string, string> = {
@@ -134,8 +144,10 @@ export async function migrateFromLocalStorage(uid: string) {
     if (!raw) continue;
     try {
       const items: Array<{ id: string }> = JSON.parse(raw);
-      await batchSaveItems(uid, colName, items);
-      localStorage.removeItem(lsKey);
+      if (items.length > 0) {
+        await batchSaveItems(uid, colName, items);
+        localStorage.removeItem(lsKey);
+      }
     } catch {
       // ignora se já migrado ou formato inválido
     }

@@ -855,14 +855,6 @@ export default function App() {
                   FinancIA Chat
                 </button>
 
-                <button
-                  onClick={() => setActiveTab('docs')}
-                  id="tab-docs"
-                  className={`px-3 py-2 rounded-lg font-semibold transition-all ${activeTab === 'docs' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100'}`}
-                >
-                  Arquitetura & Docs
-                </button>
-
               </nav>
 
               {/* Right Menu: User profile and Logout */}
@@ -906,7 +898,6 @@ export default function App() {
                   { id: 'people', val: 'Nossos Familiares' },
                   { id: 'insights', val: 'Mapeador IA' },
                   { id: 'chatbot', val: 'FinancIA Chat' },
-                  { id: 'docs', val: 'Arquitetura & Docs' }
                 ].map(tab => (
                   <button
                     key={tab.id}

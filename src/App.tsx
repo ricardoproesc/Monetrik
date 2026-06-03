@@ -494,8 +494,12 @@ export default function App() {
 
   // Helper: chama Firestore só se disponível, sem travar o app em erros
   const fs = async (fn: () => Promise<void>) => {
-    if (!userId || !isFirebaseConfigured) return;
-    fn().catch(e => console.error("Firestore sync:", e));
+    console.log("[FS] userId:", userId, "| configured:", isFirebaseConfigured);
+    if (!userId || !isFirebaseConfigured) {
+      console.warn("[FS] Skipped — userId ou Firebase não disponível");
+      return;
+    }
+    fn().catch(e => console.error("[FS] Erro Firestore:", e));
   };
 
   const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {

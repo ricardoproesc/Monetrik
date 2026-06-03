@@ -11,6 +11,8 @@ interface TransactionsManagerProps {
   people: Person[];
   incomes: Income[];
   expenses: Expense[];
+  subcategories: SubcategoryItem[];
+  onSaveSubcategories: (newSubs: SubcategoryItem[]) => void;
   onAddIncome: (income: Omit<Income, 'id'>) => void;
   onAddExpense: (expense: Omit<Expense, 'id'>) => void;
   onDeleteIncome: (id: string) => void;
@@ -93,7 +95,9 @@ const DEFAULT_SUBCATEGORIES: SubcategoryItem[] = [
 ];
 
 export default function TransactionsManager({
-  people, incomes, expenses, onAddIncome, onAddExpense, onDeleteIncome, onDeleteExpense, onUpdateIncome, onUpdateExpense,
+  people, incomes, expenses,
+  subcategories: subcategoriesProp, onSaveSubcategories,
+  onAddIncome, onAddExpense, onDeleteIncome, onDeleteExpense, onUpdateIncome, onUpdateExpense,
   onBulkUpdateExpenses, onBulkDeleteExpenses, onBulkUpdateIncomes, onBulkDeleteIncomes
 }: TransactionsManagerProps) {
   const [activeTab, setActiveTab] = useState<'expenses' | 'incomes'>('expenses');
@@ -123,15 +127,9 @@ export default function TransactionsManager({
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>('Pix');
   
   // Subcategories persistent state
-  const [subcategories, setSubcategories] = useState<SubcategoryItem[]>(() => {
-    const saved = localStorage.getItem("kashfam_subcategories");
-    return saved ? JSON.parse(saved) : DEFAULT_SUBCATEGORIES;
-  });
-
-  const saveSubcategories = (newSubs: SubcategoryItem[]) => {
-    setSubcategories(newSubs);
-    localStorage.setItem("kashfam_subcategories", JSON.stringify(newSubs));
-  };
+  // Subcategorias vêm do App.tsx (por usuário, salvas no Firestore)
+  const subcategories = subcategoriesProp.length > 0 ? subcategoriesProp : DEFAULT_SUBCATEGORIES;
+  const saveSubcategories = onSaveSubcategories;
 
   // Subcategories Modal States
   const [showSubcatMgmt, setShowSubcatMgmt] = useState(false);

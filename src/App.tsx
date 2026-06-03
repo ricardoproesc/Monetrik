@@ -19,8 +19,10 @@ import {
   loadIncomes, saveIncome, deleteIncome,
   loadExpenses, saveExpense, deleteExpense,
   loadSettings, saveSettings as fsaveSettings,
+  loadSubcategories, saveSubcategories as fsSaveSubcategories,
   migrateFromLocalStorage, batchSaveItems,
 } from "./lib/firestore";
+import type { SubcategoryItem } from "./components/TransactionsManager";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
 import TransactionsManager from "./components/TransactionsManager";
@@ -224,6 +226,17 @@ export default function App() {
     return false;
   });
 
+  // Subcategorias — por usuário (uid)
+  const [subcategories, setSubcategories] = useState<SubcategoryItem[]>(() => {
+    const uid = localStorage.getItem("kashfam_uid");
+    const key = uid ? `kashfam_subcategories_${uid}` : "kashfam_subcategories";
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved);
+    // fallback: chave global legada
+    const legacy = localStorage.getItem("kashfam_subcategories");
+    return legacy ? JSON.parse(legacy) : [];
+  });
+
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
     const saved = localStorage.getItem("kashfam_people");
@@ -301,6 +314,7 @@ export default function App() {
           setUserId(uid);
           localStorage.setItem("kashfam_auth", "true");
           localStorage.setItem("kashfam_email", email);
+          localStorage.setItem("kashfam_uid", uid);
 
           // Onboarding flag
           let onboarded = localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
@@ -339,6 +353,21 @@ export default function App() {
           if (fsIncomes.length > 0) setIncomes(fsIncomes);
           if (fsExpenses.length > 0) setExpenses(fsExpenses);
           if (fsSettings) setAlertSettings(fsSettings);
+
+          // Carregar subcategorias do usuário
+          const fsSubcats = await loadSubcategories(uid).catch(() => null);
+          if (fsSubcats && fsSubcats.length > 0) {
+            setSubcategories(fsSubcats);
+            localStorage.setItem(`kashfam_subcategories_${uid}`, JSON.stringify(fsSubcats));
+          } else {
+            // Migrar subcategorias legadas (chave global → chave por UID)
+            const legacy = localStorage.getItem("kashfam_subcategories");
+            if (legacy) {
+              const parsed = JSON.parse(legacy);
+              setSubcategories(parsed);
+              localStorage.setItem(`kashfam_subcategories_${uid}`, legacy);
+            }
+          }
 
         } else {
           setIsAuthenticated(false);
@@ -500,6 +529,14 @@ export default function App() {
       return;
     }
     fn().catch(e => console.error("[FS] Erro Firestore:", e));
+  };
+
+  const handleSaveSubcategories = (newSubs: SubcategoryItem[]) => {
+    setSubcategories(newSubs);
+    if (userId) {
+      localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(newSubs));
+      fsSaveSubcategories(userId, newSubs).catch(() => {});
+    }
   };
 
   const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
@@ -1050,6 +1087,8 @@ export default function App() {
                 people={people}
                 incomes={incomes}
                 expenses={expenses}
+                subcategories={subcategories}
+                onSaveSubcategories={handleSaveSubcategories}
                 onAddIncome={handleAddIncome}
                 onAddExpense={handleAddExpense}
                 onDeleteIncome={handleDeleteIncome}

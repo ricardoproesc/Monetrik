@@ -1,5 +1,6 @@
 import { getAuth } from "firebase/auth";
 import type { Person, Income, Expense, AlertSettings } from "../types";
+import type { SubcategoryItem } from "../components/TransactionsManager";
 
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
@@ -151,6 +152,20 @@ export async function deleteExpense(uid: string, expenseId: string) {
 
 export async function loadExpenses(uid: string): Promise<Expense[]> {
   return loadCol<Expense>(uid, "expenses");
+}
+
+// -------------------------------------------------------
+// Subcategorias (por usuário)
+// -------------------------------------------------------
+export async function saveSubcategories(uid: string, items: SubcategoryItem[]) {
+  await saveDoc(uid, "meta", "subcategories", { items });
+}
+
+export async function loadSubcategories(uid: string): Promise<SubcategoryItem[] | null> {
+  const res = await restFetch("GET", `${baseUrl(uid, "meta")}/subcategories`);
+  if (!res?.fields?.items) return null;
+  const parsed = fromFSFields(res.fields);
+  return (parsed.items as SubcategoryItem[]) ?? null;
 }
 
 // -------------------------------------------------------

@@ -32,9 +32,9 @@ import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
-import { 
-  PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers, 
-  BookOpen, HelpCircle, LogOut, Mail, Lock, User, Check, AlertCircle, Menu, X
+import {
+  PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
+  BookOpen, HelpCircle, LogOut, Mail, Lock, User, Check, AlertCircle, Menu, X, Loader
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -59,7 +59,8 @@ export default function App() {
   });
   const [userId, setUserId] = useState<string | null>(null);
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot'>('login');
-  
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
   // Auth Form Fields
   const [emailInput, setEmailInput] = useState("");
   const [nameInput, setNameInput] = useState("");
@@ -267,8 +268,9 @@ export default function App() {
       return;
     }
 
-    if (isFirebaseConfigured && auth) {
-      try {
+    setIsAuthLoading(true);
+    try {
+      if (isFirebaseConfigured && auth) {
         const cred = await signInWithEmailAndPassword(auth, emailInput.trim(), passInput);
         if (!cred.user.emailVerified) {
           await signOut(auth);
@@ -280,19 +282,21 @@ export default function App() {
         setAuthFeedback("");
         setPendingVerificationEmail("");
         // onAuthStateChanged cuida de setar isAuthenticated
-      } catch (err: any) {
-        const msgs: Record<string, string> = {
-          "auth/user-not-found": "E-mail não cadastrado.",
-          "auth/wrong-password": "Senha incorreta.",
-          "auth/invalid-credential": "E-mail ou senha incorretos.",
-          "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos.",
-        };
-        setAuthFeedback(msgs[err.code] || "Erro ao fazer login. Tente novamente.");
-        setAuthStatus('error');
+      } else {
+        // Fallback sem Firebase: aceita qualquer credencial válida
+        persistSession(emailInput.trim());
       }
-    } else {
-      // Fallback sem Firebase: aceita qualquer credencial válida
-      persistSession(emailInput.trim());
+    } catch (err: any) {
+      const msgs: Record<string, string> = {
+        "auth/user-not-found": "E-mail não cadastrado.",
+        "auth/wrong-password": "Senha incorreta.",
+        "auth/invalid-credential": "E-mail ou senha incorretos.",
+        "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos.",
+      };
+      setAuthFeedback(msgs[err.code] || "Erro ao fazer login. Tente novamente.");
+      setAuthStatus('error');
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -334,8 +338,9 @@ export default function App() {
       return;
     }
 
-    if (isFirebaseConfigured && auth) {
-      try {
+    setIsAuthLoading(true);
+    try {
+      if (isFirebaseConfigured && auth) {
         const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passInput);
         await sendEmailVerification(cred.user);
 
@@ -353,23 +358,25 @@ export default function App() {
         setAuthFeedback(`Conta criada! Enviamos um e-mail de verificação para "${emailInput.trim()}". Clique no link e depois faça login.`);
         setAuthStatus('success');
         setAuthView('login');
-      } catch (err: any) {
-        const msgs: Record<string, string> = {
-          "auth/email-already-in-use": "Este e-mail já possui cadastro. Faça login.",
-          "auth/invalid-email": "E-mail inválido.",
-          "auth/weak-password": "Senha muito fraca. Use ao menos 6 caracteres.",
-        };
-        setAuthFeedback(msgs[err.code] || "Erro ao criar conta. Tente novamente.");
-        setAuthStatus('error');
+      } else {
+        // Fallback sem Firebase: cria sessão local
+        setPeople(prev => {
+          const updated = [...prev];
+          updated[0] = { ...updated[0], name: nameInput.trim(), email: emailInput.trim() };
+          return updated;
+        });
+        persistSession(emailInput.trim());
       }
-    } else {
-      // Fallback sem Firebase: cria sessão local
-      setPeople(prev => {
-        const updated = [...prev];
-        updated[0] = { ...updated[0], name: nameInput.trim(), email: emailInput.trim() };
-        return updated;
-      });
-      persistSession(emailInput.trim());
+    } catch (err: any) {
+      const msgs: Record<string, string> = {
+        "auth/email-already-in-use": "Este e-mail já possui cadastro. Faça login.",
+        "auth/invalid-email": "E-mail inválido.",
+        "auth/weak-password": "Senha muito fraca. Use ao menos 6 caracteres.",
+      };
+      setAuthFeedback(msgs[err.code] || "Erro ao criar conta. Tente novamente.");
+      setAuthStatus('error');
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -382,18 +389,21 @@ export default function App() {
       return;
     }
 
-    if (isFirebaseConfigured && auth) {
-      try {
+    setIsAuthLoading(true);
+    try {
+      if (isFirebaseConfigured && auth) {
         await sendPasswordResetEmail(auth, emailInput.trim());
         setAuthFeedback(`E-mail de redefinição enviado para "${emailInput}". Verifique sua caixa de entrada.`);
         setAuthStatus('success');
-      } catch (err: any) {
-        setAuthFeedback("Não foi possível enviar o e-mail. Verifique o endereço informado.");
-        setAuthStatus('error');
+      } else {
+        setAuthFeedback("Recuperação de senha requer Firebase configurado.");
+        setAuthStatus('info');
       }
-    } else {
-      setAuthFeedback("Recuperação de senha requer Firebase configurado.");
-      setAuthStatus('info');
+    } catch (err: any) {
+      setAuthFeedback("Não foi possível enviar o e-mail. Verifique o endereço informado.");
+      setAuthStatus('error');
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -669,9 +679,11 @@ export default function App() {
                 <button
                   type="submit"
                   id="btn-auth-submit-login"
-                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs"
+                  disabled={isAuthLoading}
+                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs flex items-center justify-center gap-2"
                 >
-                  Confirmar Credenciais
+                  {isAuthLoading && <Loader className="h-4 w-4 animate-spin" />}
+                  {isAuthLoading ? "Entrando..." : "Confirmar Credenciais"}
                 </button>
               </form>
             )}
@@ -766,12 +778,14 @@ export default function App() {
                   type="submit"
                   id="btn-auth-submit-register"
                   disabled={
+                    isAuthLoading ||
                     (passInput.length > 0 && !isPasswordValid(passInput)) ||
                     (confirmPassInput.length > 0 && passInput !== confirmPassInput)
                   }
-                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-colors"
+                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2"
                 >
-                  Registrar e Enviar E-mail
+                  {isAuthLoading && <Loader className="h-4 w-4 animate-spin" />}
+                  {isAuthLoading ? "Criando conta..." : "Registrar e Enviar E-mail"}
                 </button>
               </form>
             )}
@@ -800,9 +814,11 @@ export default function App() {
                 <button
                   type="submit"
                   id="btn-auth-submit-forgot"
-                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold transition-colors"
+                  disabled={isAuthLoading}
+                  className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2"
                 >
-                  Disparar Recuperação
+                  {isAuthLoading && <Loader className="h-4 w-4 animate-spin" />}
+                  {isAuthLoading ? "Enviando..." : "Disparar Recuperação"}
                 </button>
               </form>
             )}

@@ -55,7 +55,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
 
         {/* Header */}
         <div className="text-center mb-6 space-y-3">
-          <div className="h-14 w-14 bg-zinc-950 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+          <div className="h-14 w-14 bg-emerald-500 text-zinc-950 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
             <PiggyBank className="h-7 w-7" />
           </div>
           <div>

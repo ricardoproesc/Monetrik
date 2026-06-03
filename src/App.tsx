@@ -593,7 +593,7 @@ export default function App() {
             
             {/* Header / Brand Logo */}
             <div className="text-center space-y-2">
-              <div className="h-12 w-12 bg-zinc-950 text-white rounded-2xl flex items-center justify-center font-bold text-xl mx-auto shadow-sm">
+              <div className="h-12 w-12 bg-emerald-500 text-zinc-950 rounded-2xl flex items-center justify-center font-bold text-xl mx-auto shadow-sm">
                 <PiggyBank className="h-6 w-6" id="logo-icon-auth" />
               </div>
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">{brandName}</h2>
@@ -862,7 +862,7 @@ export default function App() {
               
               {/* Brand Logo and Title */}
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-bold text-sm shadow-xs">
+                <div className="h-9 w-9 bg-emerald-500 text-zinc-950 rounded-xl flex items-center justify-center font-bold text-sm shadow-xs">
                   <PiggyBank className="h-5 w-5" id="header-brand-logo" />
                 </div>
                 <div>

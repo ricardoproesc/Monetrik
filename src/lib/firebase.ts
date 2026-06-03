@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
 
@@ -24,5 +24,11 @@ const app = isFirebaseConfigured
   : null;
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+
+// persistentLocalCache: escritas resolvem imediatamente no cache local
+// e sincronizam com o servidor em background
+export const db = app
+  ? initializeFirestore(app, { localCache: persistentLocalCache() })
+  : null;
+
 export default app;

@@ -6,17 +6,10 @@ import {
   deleteDoc,
   writeBatch,
   onSnapshot,
-  getFirestore,
   type Unsubscribe,
 } from "firebase/firestore";
-import { auth } from "./firebase";
+import { db } from "./firebase";
 import type { Person, Income, Expense, AlertSettings } from "../types";
-
-// Obtém sempre uma instância fresca do Firestore (evita problemas de módulo)
-const getDB = () => {
-  if (!auth?.app) throw new Error("Firebase app não inicializado");
-  return getFirestore(auth.app);
-};
 
 // Remove campos undefined — Firestore não aceita undefined
 const clean = <T extends object>(obj: T): T =>
@@ -26,14 +19,12 @@ const clean = <T extends object>(obj: T): T =>
 // Settings
 // -------------------------------------------------------
 export async function saveSettings(uid: string, settings: AlertSettings) {
-  const db = getDB();
-  await setDoc(doc(db, "users", uid, "meta", "settings"), clean(settings));
+  await setDoc(doc(db!, "users", uid, "meta", "settings"), clean(settings));
 }
 
 export async function loadSettings(uid: string): Promise<AlertSettings | null> {
-  const db = getDB();
   const { getDoc } = await import("firebase/firestore");
-  const snap = await getDoc(doc(db, "users", uid, "meta", "settings"));
+  const snap = await getDoc(doc(db!, "users", uid, "meta", "settings"));
   return snap.exists() ? (snap.data() as AlertSettings) : null;
 }
 
@@ -41,18 +32,15 @@ export async function loadSettings(uid: string): Promise<AlertSettings | null> {
 // People
 // -------------------------------------------------------
 export async function savePerson(uid: string, person: Person) {
-  const db = getDB();
-  await setDoc(doc(db, "users", uid, "people", person.id), clean(person));
+  await setDoc(doc(db!, "users", uid, "people", person.id), clean(person));
 }
 
 export async function deletePerson(uid: string, personId: string) {
-  const db = getDB();
-  await deleteDoc(doc(db, "users", uid, "people", personId));
+  await deleteDoc(doc(db!, "users", uid, "people", personId));
 }
 
 export async function loadPeople(uid: string): Promise<Person[]> {
-  const db = getDB();
-  const snap = await getDocs(collection(db, "users", uid, "people"));
+  const snap = await getDocs(collection(db!, "users", uid, "people"));
   return snap.docs.map((d) => d.data() as Person);
 }
 
@@ -60,18 +48,15 @@ export async function loadPeople(uid: string): Promise<Person[]> {
 // Incomes
 // -------------------------------------------------------
 export async function saveIncome(uid: string, income: Income) {
-  const db = getDB();
-  await setDoc(doc(db, "users", uid, "incomes", income.id), clean(income));
+  await setDoc(doc(db!, "users", uid, "incomes", income.id), clean(income));
 }
 
 export async function deleteIncome(uid: string, incomeId: string) {
-  const db = getDB();
-  await deleteDoc(doc(db, "users", uid, "incomes", incomeId));
+  await deleteDoc(doc(db!, "users", uid, "incomes", incomeId));
 }
 
 export async function loadIncomes(uid: string): Promise<Income[]> {
-  const db = getDB();
-  const snap = await getDocs(collection(db, "users", uid, "incomes"));
+  const snap = await getDocs(collection(db!, "users", uid, "incomes"));
   return snap.docs.map((d) => d.data() as Income);
 }
 
@@ -79,21 +64,18 @@ export async function loadIncomes(uid: string): Promise<Income[]> {
 // Expenses
 // -------------------------------------------------------
 export async function saveExpense(uid: string, expense: Expense) {
-  const db = getDB();
   const cleaned = clean(expense);
-  console.log("[FS] saveExpense →", { uid, id: expense.id, db: !!db });
-  await setDoc(doc(db, "users", uid, "expenses", expense.id), cleaned);
+  console.log("[FS] saveExpense →", uid, expense.id);
+  await setDoc(doc(db!, "users", uid, "expenses", expense.id), cleaned);
   console.log("[FS] saveExpense OK ✓");
 }
 
 export async function deleteExpense(uid: string, expenseId: string) {
-  const db = getDB();
-  await deleteDoc(doc(db, "users", uid, "expenses", expenseId));
+  await deleteDoc(doc(db!, "users", uid, "expenses", expenseId));
 }
 
 export async function loadExpenses(uid: string): Promise<Expense[]> {
-  const db = getDB();
-  const snap = await getDocs(collection(db, "users", uid, "expenses"));
+  const snap = await getDocs(collection(db!, "users", uid, "expenses"));
   return snap.docs.map((d) => d.data() as Expense);
 }
 
@@ -105,8 +87,7 @@ export function subscribeToCollection<T>(
   name: string,
   onData: (items: T[]) => void
 ): Unsubscribe {
-  const db = getDB();
-  return onSnapshot(collection(db, "users", uid, name), (snap) => {
+  return onSnapshot(collection(db!, "users", uid, name), (snap) => {
     onData(snap.docs.map((d) => d.data() as T));
   });
 }
@@ -120,10 +101,9 @@ export async function batchSaveItems<T extends { id: string }>(
   items: T[]
 ) {
   if (items.length === 0) return;
-  const db = getDB();
-  const batch = writeBatch(db);
+  const batch = writeBatch(db!);
   items.forEach((item) => {
-    const ref = doc(db, "users", uid, collectionName, item.id);
+    const ref = doc(db!, "users", uid, collectionName, item.id);
     batch.set(ref, clean(item));
   });
   await batch.commit();
@@ -148,9 +128,7 @@ export async function migrateFromLocalStorage(uid: string) {
         await batchSaveItems(uid, colName, items);
         localStorage.removeItem(lsKey);
       }
-    } catch {
-      // ignora se já migrado ou formato inválido
-    }
+    } catch { /* ignora */ }
   }
 
   const rawSettings = localStorage.getItem("kashfam_settings");

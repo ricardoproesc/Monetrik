@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Person, Income, Expense, IncomeCategory, ExpenseCategory } from "../types";
 import { 
   FileSpreadsheet, Download, RefreshCw, Calendar, 
@@ -19,16 +19,24 @@ interface FinaPlanMatrixProps {
 const MONTHS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 export default function FinaPlanMatrix({ people, incomes, expenses }: FinaPlanMatrixProps) {
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [groupBy, setGroupBy] = useState<"category" | "name">("category");
-
-  // Filter years available in data
+  // Calcula anos disponíveis nos dados
   const availableYears = useMemo(() => {
-    const years = new Set<number>([2025, 2026, 2027]);
+    const years = new Set<number>();
     incomes.forEach(i => years.add(new Date(i.date).getFullYear()));
     expenses.forEach(e => years.add(new Date(e.date).getFullYear()));
-    return Array.from(years).sort();
+    const sorted = Array.from(years).sort();
+    return sorted.length > 0 ? sorted : [new Date().getFullYear()];
   }, [incomes, expenses]);
+
+  const [selectedYear, setSelectedYear] = useState<number>(() => availableYears[0]);
+  const [groupBy, setGroupBy] = useState<"category" | "name">("category");
+
+  // Sincroniza selectedYear quando availableYears muda
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears, selectedYear]);
 
   // Income aggregates for FinaPlan style
   const receiptsData = useMemo(() => {

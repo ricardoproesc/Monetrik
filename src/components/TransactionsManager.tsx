@@ -645,77 +645,8 @@ export default function TransactionsManager({
           ) : (
             // Render Receitas form
             <form onSubmit={handleAddIncomeSubmit} className="space-y-4 font-sans">
-              
-              <div className="grid grid-cols-2 gap-4">
-                
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Valor Estimado (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={incomeAmount}
-                    onChange={e => setIncomeAmount(e.target.value)}
-                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-mono"
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Data de Entrada</label>
-                  <input
-                    type="date"
-                    value={incomeDate}
-                    onChange={e => setIncomeDate(e.target.value)}
-                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Familiar Beneficiado</label>
-                  <select
-                    value={incomePerson}
-                    onChange={e => setIncomePerson(e.target.value)}
-                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400"
-                  >
-                    <option value="">Selecione...</option>
-                    {people.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.relationship})</option>
-                    ))}
-                  </select>
-                </div>
-
-              </div>
-
-
-              {/* Recurrence config */}
-              <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-zinc-700">Este fluxo de renda se repete todo mês?</span>
-                  <input
-                    type="checkbox"
-                    checked={incomeIsRecurring}
-                    onChange={e => setIncomeIsRecurring(e.target.checked)}
-                    className="h-4 w-4 accent-zinc-950"
-                  />
-                </div>
-                {incomeIsRecurring && (
-                  <div className="animate-fade-in grid grid-cols-2 gap-2 pt-1 border-t border-zinc-100">
-                    <select
-                      value={incomeRecurrence}
-                      onChange={e => setIncomeRecurrence(e.target.value as any)}
-                      className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-1.5 focus:outline-none"
-                    >
-                      <option value="mensal">Mensalmente</option>
-                      <option value="anual font-sans">Anualmente</option>
-                      <option value="eventual">Eventualmente</option>
-                    </select>
-                    <span className="text-[10px] text-zinc-400 self-center">Automatiza o lançamento desta renda.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Subcategoria */}
+              {/* 1. Subcategoria */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-zinc-700">Subcategoria da Receita</label>
@@ -767,6 +698,74 @@ export default function TransactionsManager({
                   <p className="text-[10px] text-amber-600 mt-1">
                     Nenhuma subcategoria cadastrada. Clique em <strong>Configurar Subcategorias</strong> para adicionar.
                   </p>
+                )}
+              </div>
+
+              {/* 2. Valor + Data */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Valor Estimado (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={incomeAmount}
+                    onChange={e => setIncomeAmount(e.target.value)}
+                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Data de Entrada</label>
+                  <input
+                    type="date"
+                    value={incomeDate}
+                    onChange={e => setIncomeDate(e.target.value)}
+                    className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* 3. Familiar Beneficiado */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Familiar Beneficiado</label>
+                <select
+                  value={incomePerson}
+                  onChange={e => setIncomePerson(e.target.value)}
+                  className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400"
+                >
+                  <option value="">Selecione...</option>
+                  {people.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.relationship})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 4. Recorrência */}
+              <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-700">Este fluxo de renda se repete todo mês?</span>
+                  <input
+                    type="checkbox"
+                    checked={incomeIsRecurring}
+                    onChange={e => setIncomeIsRecurring(e.target.checked)}
+                    className="h-4 w-4 accent-zinc-950"
+                  />
+                </div>
+                {incomeIsRecurring && (
+                  <div className="animate-fade-in grid grid-cols-2 gap-2 pt-1 border-t border-zinc-100">
+                    <select
+                      value={incomeRecurrence}
+                      onChange={e => setIncomeRecurrence(e.target.value as any)}
+                      className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-1.5 focus:outline-none"
+                    >
+                      <option value="mensal">Mensalmente</option>
+                      <option value="anual">Anualmente</option>
+                      <option value="eventual">Eventualmente</option>
+                    </select>
+                    <span className="text-[10px] text-zinc-400 self-center">Automatiza o lançamento desta renda.</span>
+                  </div>
                 )}
               </div>
 

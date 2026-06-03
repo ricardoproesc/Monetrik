@@ -22,6 +22,7 @@ import PanoramaGeral from "./components/PanoramaGeral";
 import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
+import OnboardingSetup from "./components/OnboardingSetup";
 import { 
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers, 
   BookOpen, HelpCircle, LogOut, Mail, Lock, User, Check, AlertCircle, Menu, X
@@ -196,6 +197,9 @@ export default function App() {
   const [authFeedback, setAuthFeedback] = useState("");
   const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'info' | ''>('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
+    return localStorage.getItem("kashfam_onboarded") === "true";
+  });
 
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
@@ -411,7 +415,18 @@ export default function App() {
     }
   };
 
+  const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
+    const newPerson: import("./types").Person = { ...memberData, id: "p1" };
+    setPeople([newPerson]);
+    setIncomes([]);
+    setExpenses([]);
+    localStorage.setItem("kashfam_onboarded", "true");
+    setIsOnboarded(true);
+  };
+
   const handleDemoBypass = () => {
+    localStorage.setItem("kashfam_onboarded", "true");
+    setIsOnboarded(true);
     persistSession("demo@monetrik.app");
   };
 
@@ -509,6 +524,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 selection:bg-zinc-950 selection:text-white antialiased">
       
+      {/* Onboarding — primeiro acesso após login */}
+      {isAuthenticated && !isOnboarded ? (
+        <OnboardingSetup
+          sessionEmail={sessionEmail}
+          displayName={auth?.currentUser?.displayName || undefined}
+          onComplete={handleCompleteOnboarding}
+        />
+      ) : null}
+
       {/* 1. Auth gate if user is not authenticated */}
       {!isAuthenticated ? (
         <div className="min-h-screen flex items-center justify-center p-4 md:p-8 bg-zinc-50 font-sans">
@@ -765,8 +789,8 @@ export default function App() {
 
           </div>
         </div>
-      ) : (
-        
+      ) : isOnboarded ? (
+
         // 2. Main App Dashboard layout
         <div className="flex flex-col min-h-screen">
           
@@ -995,7 +1019,7 @@ export default function App() {
           </footer>
 
         </div>
-      )}
+      ) : null}
 
     </div>
   );

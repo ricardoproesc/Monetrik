@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   signOut,
   updateProfile,
   onAuthStateChanged,
@@ -194,6 +195,7 @@ export default function App() {
   const [passInput, setPassInput] = useState("");
   const [authFeedback, setAuthFeedback] = useState("");
   const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'info' | ''>('');
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
 
   // App core states
   const [people, setPeople] = useState<Person[]>(() => {
@@ -285,8 +287,16 @@ export default function App() {
 
     if (isFirebaseConfigured && auth) {
       try {
-        await signInWithEmailAndPassword(auth, emailInput.trim(), passInput);
+        const cred = await signInWithEmailAndPassword(auth, emailInput.trim(), passInput);
+        if (!cred.user.emailVerified) {
+          await signOut(auth);
+          setPendingVerificationEmail(emailInput.trim());
+          setAuthFeedback("E-mail ainda não verificado. Verifique sua caixa de entrada e clique no link.");
+          setAuthStatus('error');
+          return;
+        }
         setAuthFeedback("");
+        setPendingVerificationEmail("");
         // onAuthStateChanged cuida de setar isAuthenticated
       } catch (err: any) {
         const msgs: Record<string, string> = {
@@ -322,6 +332,10 @@ export default function App() {
       try {
         const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passInput);
         await updateProfile(cred.user, { displayName: nameInput.trim() });
+        await sendEmailVerification(cred.user);
+
+        // Desloga até o e-mail ser verificado
+        await signOut(auth);
 
         // Atualiza o titular na lista de pessoas
         setPeople(prev => {
@@ -330,9 +344,10 @@ export default function App() {
           return updated;
         });
 
-        setAuthFeedback(`Bem-vindo(a), ${nameInput.trim()}! Conta criada com sucesso.`);
+        setPendingVerificationEmail(emailInput.trim());
+        setAuthFeedback(`Conta criada! Enviamos um e-mail de verificação para "${emailInput.trim()}". Clique no link e depois faça login.`);
         setAuthStatus('success');
-        // onAuthStateChanged vai fazer o redirect automático
+        setAuthView('login');
       } catch (err: any) {
         const msgs: Record<string, string> = {
           "auth/email-already-in-use": "Este e-mail já possui cadastro. Faça login.",
@@ -493,13 +508,35 @@ export default function App() {
 
             {/* Auth feedbacks */}
             {authFeedback && (
-              <div className={`p-3.5 rounded-xl border text-xs flex gap-2 items-start ${
+              <div className={`p-3.5 rounded-xl border text-xs flex flex-col gap-2 ${
                 authStatus === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-100' :
                 authStatus === 'error' ? 'bg-red-50 text-red-800 border-red-100' :
                 'bg-zinc-50 text-zinc-500 border-zinc-100'
               }`}>
-                {authStatus === 'success' ? <Check className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-red-650 shrink-0" />}
-                <span className="leading-snug">{authFeedback}</span>
+                <div className="flex gap-2 items-start">
+                  {authStatus === 'success' ? <Check className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />}
+                  <span className="leading-snug">{authFeedback}</span>
+                </div>
+                {pendingVerificationEmail && authStatus === 'error' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!isFirebaseConfigured || !auth) return;
+                      try {
+                        const cred = await signInWithEmailAndPassword(auth, pendingVerificationEmail, passInput);
+                        await sendEmailVerification(cred.user);
+                        await signOut(auth);
+                        setAuthFeedback("E-mail de verificação reenviado! Verifique sua caixa de entrada.");
+                        setAuthStatus('success');
+                      } catch {
+                        setAuthFeedback("Não foi possível reenviar. Verifique o e-mail e tente novamente.");
+                      }
+                    }}
+                    className="text-[10px] font-semibold underline text-red-700 hover:text-red-900 text-left"
+                  >
+                    Reenviar e-mail de verificação
+                  </button>
+                )}
               </div>
             )}
 

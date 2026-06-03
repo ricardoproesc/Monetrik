@@ -68,7 +68,7 @@ export default function LandingPage() {
               {
                 icon: <Zap className="h-6 w-6" />,
                 title: "Ultra Rápido",
-                desc: "Sem lag. Funciona offline. Sincroniza automaticamente"
+                desc: "Sem lag. Sincroniza automaticamente em tempo real"
               },
               {
                 icon: <Check className="h-6 w-6" />,

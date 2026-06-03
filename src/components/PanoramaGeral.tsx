@@ -54,13 +54,34 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
     }
   }, [availableYears, filterYear]);
 
-  // Get list of unique categories from both income and expense for filters
-  const allCategories = useMemo(() => {
+  // Filtrar por ano base para dados dinâmicos
+  const yearFilter = filterYear === "All"
+    ? () => true
+    : (date: string) => new Date(date).getFullYear().toString() === filterYear;
+
+  // Pessoas com transações no ano
+  const availablePeople = useMemo(() => {
+    const personIds = new Set<string>();
+    incomes.filter(i => yearFilter(i.date)).forEach(i => personIds.add(i.personId));
+    expenses.filter(e => yearFilter(e.date)).forEach(e => personIds.add(e.personId));
+    return people.filter(p => personIds.has(p.id));
+  }, [people, incomes, expenses, filterYear]);
+
+  // Categorias com transações no ano
+  const availableCategories = useMemo(() => {
     const cats = new Set<string>();
-    incomes.forEach(i => cats.add(i.category));
-    expenses.forEach(e => cats.add(e.category));
-    return Array.from(cats);
-  }, [incomes, expenses]);
+    incomes.filter(i => yearFilter(i.date)).forEach(i => cats.add(i.category));
+    expenses.filter(e => yearFilter(e.date)).forEach(e => cats.add(e.category));
+    return Array.from(cats).sort();
+  }, [incomes, expenses, filterYear]);
+
+  // Meses com transações no ano
+  const availableMonths = useMemo(() => {
+    const months = new Set<number>();
+    incomes.filter(i => yearFilter(i.date)).forEach(i => months.add(new Date(i.date).getMonth()));
+    expenses.filter(e => yearFilter(e.date)).forEach(e => months.add(new Date(e.date).getMonth()));
+    return Array.from(months).sort((a, b) => a - b);
+  }, [incomes, expenses, filterYear]);
 
   // Apply filters to calculate active Incomes & Expenses
   const filteredIncomes = useMemo(() => {
@@ -238,9 +259,9 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
               onChange={e => setFilterPersonId(e.target.value)}
               className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none"
             >
-              <option value="All">Apenas da Família Completa</option>
-              {people.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.relationship})</option>
+              <option value="All">Todos da Família</option>
+              {availablePeople.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
@@ -254,7 +275,7 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
               className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none"
             >
               <option value="All">Todas as Categorias</option>
-              {allCategories.map(cat => (
+              {availableCategories.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -283,8 +304,8 @@ export default function PanoramaGeral({ people, incomes, expenses }: PanoramaGer
               className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none"
             >
               <option value="All">Ano Completo</option>
-              {MONTHS_PT.map((m, idx) => (
-                <option key={idx} value={idx.toString()}>{m}</option>
+              {availableMonths.map(idx => (
+                <option key={idx} value={idx.toString()}>{MONTHS_PT[idx]}</option>
               ))}
             </select>
           </div>

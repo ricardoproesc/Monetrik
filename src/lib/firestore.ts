@@ -1,139 +1,167 @@
-import {
-  doc,
-  collection,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  writeBatch,
-  onSnapshot,
-  type Unsubscribe,
-} from "firebase/firestore";
-import { db } from "./firebase";
+import { getAuth } from "firebase/auth";
 import type { Person, Income, Expense, AlertSettings } from "../types";
 
-// Remove campos undefined — Firestore não aceita undefined
-const clean = <T extends object>(obj: T): T =>
-  JSON.parse(JSON.stringify(obj)) as T;
+const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
+// -------------------------------------------------------
+// REST API helpers
+// -------------------------------------------------------
+async function getToken(): Promise<string> {
+  const user = getAuth().currentUser;
+  if (!user) throw new Error("Usuário não autenticado");
+  return user.getIdToken();
+}
+
+function baseUrl(uid: string, col: string) {
+  return `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}/${col}`;
+}
+
+async function restFetch(method: string, url: string, body?: unknown) {
+  const token = await getToken();
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Firestore ${method} ${res.status}: ${text}`);
+  }
+  return res.status === 204 || res.status === 404 ? null : res.json();
+}
+
+// -------------------------------------------------------
+// Conversão JS ↔ Firestore wire format
+// -------------------------------------------------------
+function toFS(val: unknown): unknown {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === "string")  return { stringValue: val };
+  if (typeof val === "number")  return { doubleValue: val };
+  if (typeof val === "boolean") return { booleanValue: val };
+  if (Array.isArray(val))       return { arrayValue: { values: val.map(toFS) } };
+  if (typeof val === "object") {
+    const fields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      fields[k] = toFS(v);
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+function fromFSVal(v: any): unknown {
+  if ("stringValue"  in v) return v.stringValue;
+  if ("doubleValue"  in v) return v.doubleValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("nullValue"    in v) return null;
+  if ("arrayValue"   in v) return (v.arrayValue?.values ?? []).map(fromFSVal);
+  if ("mapValue"     in v) return fromFSFields(v.mapValue?.fields ?? {});
+  return null;
+}
+
+function fromFSFields(fields: Record<string, any>): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) obj[k] = fromFSVal(v);
+  return obj;
+}
+
+function toFSFields(data: object): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) fields[k] = toFS(v);
+  }
+  return fields;
+}
+
+// -------------------------------------------------------
+// CRUD genérico
+// -------------------------------------------------------
+async function saveDoc(uid: string, col: string, id: string, data: object) {
+  const url = `${baseUrl(uid, col)}/${id}`;
+  await restFetch("PATCH", url, { fields: toFSFields(data) });
+}
+
+async function removeDoc(uid: string, col: string, id: string) {
+  await restFetch("DELETE", `${baseUrl(uid, col)}/${id}`);
+}
+
+async function loadCol<T>(uid: string, col: string): Promise<T[]> {
+  const res = await restFetch("GET", baseUrl(uid, col));
+  if (!res?.documents) return [];
+  return res.documents.map((d: any) => fromFSFields(d.fields ?? {}) as T);
+}
 
 // -------------------------------------------------------
 // Settings
 // -------------------------------------------------------
 export async function saveSettings(uid: string, settings: AlertSettings) {
-  await setDoc(doc(db!, "users", uid, "meta", "settings"), clean(settings));
+  await saveDoc(uid, "meta", "settings", settings);
 }
 
 export async function loadSettings(uid: string): Promise<AlertSettings | null> {
-  const { getDoc } = await import("firebase/firestore");
-  const snap = await getDoc(doc(db!, "users", uid, "meta", "settings"));
-  return snap.exists() ? (snap.data() as AlertSettings) : null;
+  const res = await restFetch("GET", `${baseUrl(uid, "meta")}/settings`);
+  if (!res?.fields) return null;
+  return fromFSFields(res.fields) as AlertSettings;
 }
 
 // -------------------------------------------------------
 // People
 // -------------------------------------------------------
 export async function savePerson(uid: string, person: Person) {
-  await setDoc(doc(db!, "users", uid, "people", person.id), clean(person));
+  await saveDoc(uid, "people", person.id, person);
 }
 
 export async function deletePerson(uid: string, personId: string) {
-  await deleteDoc(doc(db!, "users", uid, "people", personId));
+  await removeDoc(uid, "people", personId);
 }
 
 export async function loadPeople(uid: string): Promise<Person[]> {
-  const snap = await getDocs(collection(db!, "users", uid, "people"));
-  return snap.docs.map((d) => d.data() as Person);
+  return loadCol<Person>(uid, "people");
 }
 
 // -------------------------------------------------------
 // Incomes
 // -------------------------------------------------------
 export async function saveIncome(uid: string, income: Income) {
-  await setDoc(doc(db!, "users", uid, "incomes", income.id), clean(income));
+  await saveDoc(uid, "incomes", income.id, income);
 }
 
 export async function deleteIncome(uid: string, incomeId: string) {
-  await deleteDoc(doc(db!, "users", uid, "incomes", incomeId));
+  await removeDoc(uid, "incomes", incomeId);
 }
 
 export async function loadIncomes(uid: string): Promise<Income[]> {
-  const snap = await getDocs(collection(db!, "users", uid, "incomes"));
-  return snap.docs.map((d) => d.data() as Income);
+  return loadCol<Income>(uid, "incomes");
 }
 
 // -------------------------------------------------------
 // Expenses
 // -------------------------------------------------------
 export async function saveExpense(uid: string, expense: Expense) {
-  const cleaned = clean(expense);
-  console.log("[FS] saveExpense →", uid, expense.id);
-
-  // Teste REST para diagnóstico de conectividade
-  try {
-    const { getAuth } = await import("firebase/auth");
-    const currentUser = getAuth().currentUser;
-    const token = await currentUser?.getIdToken();
-    if (token) {
-      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-      const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}/expenses?documentId=${expense.id}`;
-      const fields: Record<string, unknown> = {};
-      Object.entries(cleaned).forEach(([k, v]) => {
-        if (typeof v === "string") fields[k] = { stringValue: v };
-        else if (typeof v === "number") fields[k] = { doubleValue: v };
-        else if (typeof v === "boolean") fields[k] = { booleanValue: v };
-      });
-      const res = await fetch(restUrl, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ fields }),
-      });
-      console.log("[FS REST]", res.status, await res.text());
-      if (res.ok) { console.log("[FS REST] OK ✓ — REST API funciona!"); return; }
-    }
-  } catch (e) {
-    console.error("[FS REST] erro:", e);
-  }
-
-  await setDoc(doc(db!, "users", uid, "expenses", expense.id), cleaned);
-  console.log("[FS] saveExpense OK ✓");
+  await saveDoc(uid, "expenses", expense.id, expense);
 }
 
 export async function deleteExpense(uid: string, expenseId: string) {
-  await deleteDoc(doc(db!, "users", uid, "expenses", expenseId));
+  await removeDoc(uid, "expenses", expenseId);
 }
 
 export async function loadExpenses(uid: string): Promise<Expense[]> {
-  const snap = await getDocs(collection(db!, "users", uid, "expenses"));
-  return snap.docs.map((d) => d.data() as Expense);
+  return loadCol<Expense>(uid, "expenses");
 }
 
 // -------------------------------------------------------
-// Listener em tempo real
-// -------------------------------------------------------
-export function subscribeToCollection<T>(
-  uid: string,
-  name: string,
-  onData: (items: T[]) => void
-): Unsubscribe {
-  return onSnapshot(collection(db!, "users", uid, name), (snap) => {
-    onData(snap.docs.map((d) => d.data() as T));
-  });
-}
-
-// -------------------------------------------------------
-// Bulk save (batch)
+// Bulk save
 // -------------------------------------------------------
 export async function batchSaveItems<T extends { id: string }>(
   uid: string,
   collectionName: string,
   items: T[]
 ) {
-  if (items.length === 0) return;
-  const batch = writeBatch(db!);
-  items.forEach((item) => {
-    const ref = doc(db!, "users", uid, collectionName, item.id);
-    batch.set(ref, clean(item));
-  });
-  await batch.commit();
+  await Promise.all(items.map(item => saveDoc(uid, collectionName, item.id, item)));
 }
 
 // -------------------------------------------------------
@@ -145,7 +173,6 @@ export async function migrateFromLocalStorage(uid: string) {
     kashfam_incomes: "incomes",
     kashfam_expenses: "expenses",
   };
-
   for (const [lsKey, colName] of Object.entries(keys)) {
     const raw = localStorage.getItem(lsKey);
     if (!raw) continue;
@@ -157,7 +184,6 @@ export async function migrateFromLocalStorage(uid: string) {
       }
     } catch { /* ignora */ }
   }
-
   const rawSettings = localStorage.getItem("kashfam_settings");
   if (rawSettings) {
     try {
@@ -166,3 +192,9 @@ export async function migrateFromLocalStorage(uid: string) {
     } catch { /* */ }
   }
 }
+
+// Compatibilidade (não usada com REST)
+export type Unsubscribe = () => void;
+export function subscribeToCollection<T>(
+  _uid: string, _name: string, _onData: (items: T[]) => void
+): Unsubscribe { return () => {}; }

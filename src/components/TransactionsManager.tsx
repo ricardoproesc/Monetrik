@@ -671,12 +671,9 @@ export default function TransactionsManager({
                     if (subId) {
                       const selectedSub = subcategories.find(s => s.id === subId);
                       if (selectedSub) {
-                        setIncomeNotes(selectedSub.name);
                         setIncomeCategory(selectedSub.category as any);
                         setIncomeIsFixed(getCategoryNature(selectedSub.category));
                       }
-                    } else {
-                      setIncomeNotes("");
                     }
                   }}
                   className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 text-zinc-700"
@@ -767,6 +764,18 @@ export default function TransactionsManager({
                     <span className="text-[10px] text-zinc-400 self-center">Automatiza o lançamento desta renda.</span>
                   </div>
                 )}
+              </div>
+
+              {/* 5. Observações */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Observações / Detalhes (Opcional)</label>
+                <textarea
+                  value={incomeNotes}
+                  onChange={e => setIncomeNotes(e.target.value)}
+                  placeholder="Ex: Bônus recebido, ou consultoria para projeto X"
+                  rows={2}
+                  className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400"
+                ></textarea>
               </div>
 
               <button
@@ -1897,7 +1906,7 @@ export default function TransactionsManager({
                 <textarea
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
-                  placeholder="Ex: Dividido com cunhado, ou pago à vista"
+                  placeholder={editingType === 'expense' ? "Ex: Dividido com cunhado, ou pago à vista" : "Ex: Bônus recebido, ou consultoria para projeto X"}
                   rows={2}
                   className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-zinc-950 resize-none"
                 />

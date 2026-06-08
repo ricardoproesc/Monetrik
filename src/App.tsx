@@ -33,9 +33,10 @@ import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
+import ImportData from "./components/ImportData";
 import {
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
-  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader
+  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, Upload
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -128,6 +129,7 @@ export default function App() {
   // Navigation state
   const [activeTab, setActiveTab ] = useState<'dashboard' | 'planilha' | 'transactions' | 'people' | 'insights' | 'chatbot' | 'docs'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Computes current active user dynamically based on the session email
   const principalPerson = people.find(p => p.email.toLowerCase() === sessionEmail.toLowerCase()) || people.find(p => p.relationship === 'principal') || people[0] || { name: "Ricardo Gomes" };
@@ -429,6 +431,90 @@ export default function App() {
       localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(newSubs));
       fsSaveSubcategories(userId, newSubs).catch(() => {});
     }
+  };
+
+  const handleImportData = (importedRows: any[], newSubcategoryNames: string[]) => {
+    if (!people.length) {
+      alert("É necessário adicionar pelo menos um membro da família antes de importar.");
+      return;
+    }
+
+    const personId = principalPerson.id;
+    const newIncomes: Income[] = [];
+    const newExpenses: Expense[] = [];
+
+    // Criar novas subcategorias automaticamente
+    const updatedSubcategories = [...subcategories];
+    for (const subName of newSubcategoryNames) {
+      if (!updatedSubcategories.find(s => s.name === subName)) {
+        // Determinar se é income ou expense baseado nos dados
+        const isIncome = importedRows.some(
+          row => row.subcategoria === subName && row.tipo === 'RECEITA'
+        );
+        updatedSubcategories.push({
+          id: `sub-${Date.now()}-${Math.random()}`,
+          type: isIncome ? 'income' : 'expense',
+          category: subName,
+          name: subName,
+          active: true,
+        });
+      }
+    }
+
+    // Converter linhas importadas em Income/Expense
+    for (const row of importedRows) {
+      const baseData = {
+        date: row.data,
+        notes: row.observacoes || undefined,
+      };
+
+      if (row.tipo === 'RECEITA') {
+        newIncomes.push({
+          id: `in-${Date.now()}-${Math.random()}`,
+          personId,
+          category: row.subcategoria,
+          amount: Number(row.valor),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: 'eventual',
+          ...baseData,
+        });
+      } else {
+        newExpenses.push({
+          id: `ex-${Date.now()}-${Math.random()}`,
+          personId,
+          name: row.descricao,
+          category: row.subcategoria,
+          amount: Number(row.valor),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: 'eventual',
+          paymentMethod: 'Pix',
+          ...baseData,
+        });
+      }
+    }
+
+    // Atualizar estados
+    setSubcategories(updatedSubcategories);
+    setIncomes(prev => [...prev, ...newIncomes]);
+    setExpenses(prev => [...prev, ...newExpenses]);
+
+    // Salvar no Firebase em background
+    if (userId) {
+      localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(updatedSubcategories));
+      fsSaveSubcategories(userId, updatedSubcategories).catch(() => {});
+
+      // Salvar incomes/expenses em lote
+      if (newIncomes.length > 0) {
+        batchSaveItems(userId, 'incomes', newIncomes).catch(() => {});
+      }
+      if (newExpenses.length > 0) {
+        batchSaveItems(userId, 'expenses', newExpenses).catch(() => {});
+      }
+    }
+
+    setShowImportModal(false);
   };
 
   const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
@@ -1071,6 +1157,26 @@ export default function App() {
             )}
 
           </main>
+
+          {/* Import Data Button (Floating on transactions tab) */}
+          {activeTab === 'transactions' && isAuthenticated && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="fixed bottom-8 right-8 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition-all z-40"
+            >
+              <Upload size={20} />
+              Importar Dados
+            </button>
+          )}
+
+          {/* Import Data Modal */}
+          {showImportModal && isAuthenticated && (
+            <ImportData
+              onClose={() => setShowImportModal(false)}
+              onImportSuccess={handleImportData}
+              existingSubcategories={subcategories.map((s: SubcategoryItem) => s.name)}
+            />
+          )}
 
           {/* Footer margin credit */}
           <footer className="border-t border-zinc-200 bg-white py-6">

@@ -391,19 +391,19 @@ export default function TransactionsManager({
       <div className="lg:col-span-5 space-y-6">
         
         {/* Toggle Form Tabs */}
-        <div className="flex bg-zinc-100 p-0.5 rounded-xl border border-zinc-200">
+        <div className="flex gap-3 bg-gradient-to-br from-zinc-50 to-zinc-100 p-2 rounded-2xl border-2 border-zinc-200">
           <button
             onClick={() => { setActiveTab('expenses'); setErrorMsg(""); }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'expenses' ? 'bg-white text-zinc-950 shadow-xs' : 'text-zinc-500 hover:text-zinc-950'}`}
+            className={`flex-1 flex items-center justify-center gap-2.5 py-3.5 px-4 text-sm font-bold rounded-xl transition-all ${activeTab === 'expenses' ? 'bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-200 scale-105 border border-rose-600' : 'text-zinc-600 hover:text-zinc-900 border border-transparent hover:border-rose-300 hover:bg-rose-50/40'}`}
           >
-            <ArrowDownRight className="h-4 w-4 text-rose-500" />
+            <ArrowDownRight className="h-5 w-5" />
             Nova Despesa
           </button>
           <button
             onClick={() => { setActiveTab('incomes'); setErrorMsg(""); }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'incomes' ? 'bg-white text-zinc-950 shadow-xs' : 'text-zinc-500 hover:text-zinc-950'}`}
+            className={`flex-1 flex items-center justify-center gap-2.5 py-3.5 px-4 text-sm font-bold rounded-xl transition-all ${activeTab === 'incomes' ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-200 scale-105 border border-emerald-600' : 'text-zinc-600 hover:text-zinc-900 border border-transparent hover:border-emerald-300 hover:bg-emerald-50/40'}`}
           >
-            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+            <ArrowUpRight className="h-5 w-5" />
             Nova Receita (Renda)
           </button>
         </div>

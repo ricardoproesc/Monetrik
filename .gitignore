@@ -23,3 +23,5 @@ coverage/
 # Editor
 .vscode/
 .idea/
+
+.vercel

@@ -210,6 +210,8 @@ export default function Settings({
           // Se Firebase está disponível, usar Firestore
           if (app) {
             console.log("DEBUG: Usando Firebase");
+            console.log("DEBUG: userId:", userId);
+            console.log("DEBUG: email:", email);
             const db = getFirestore(app);
 
             // Deletar receitas e despesas antigas

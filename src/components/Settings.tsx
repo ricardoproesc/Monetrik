@@ -242,25 +242,39 @@ export default function Settings({
             // Add new incomes from result
             if (result.newIncomes && Array.isArray(result.newIncomes)) {
               console.log("DEBUG: Salvando", result.newIncomes.length, "receitas");
-              for (const income of result.newIncomes) {
-                await setDoc(
-                  doc(collection(db, "users", email, "incomes")),
-                  income
-                );
+              try {
+                for (const income of result.newIncomes) {
+                  console.log("DEBUG: Salvando receita:", income.id);
+                  await setDoc(
+                    doc(collection(db, "users", email, "incomes")),
+                    income
+                  );
+                  console.log("DEBUG: Receita salva com sucesso");
+                }
+                console.log("DEBUG: Receitas salvas");
+              } catch (e) {
+                console.error("DEBUG: Erro ao salvar receitas:", e);
+                throw e;
               }
-              console.log("DEBUG: Receitas salvas");
             }
 
             // Add new expenses from result
             if (result.newExpenses && Array.isArray(result.newExpenses)) {
               console.log("DEBUG: Salvando", result.newExpenses.length, "despesas");
-              for (const expense of result.newExpenses) {
-                await setDoc(
-                  doc(collection(db, "users", email, "expenses")),
-                  expense
-                );
+              try {
+                for (const expense of result.newExpenses) {
+                  console.log("DEBUG: Salvando despesa:", expense.id);
+                  await setDoc(
+                    doc(collection(db, "users", email, "expenses")),
+                    expense
+                  );
+                  console.log("DEBUG: Despesa salva com sucesso");
+                }
+                console.log("DEBUG: Despesas salvas");
+              } catch (e) {
+                console.error("DEBUG: Erro ao salvar despesas:", e);
+                throw e;
               }
-              console.log("DEBUG: Despesas salvas");
             }
           } else {
             // Fallback: usar localStorage

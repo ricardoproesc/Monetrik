@@ -210,19 +210,33 @@ export default function Settings({
             const db = getFirestore(app);
 
             // Deletar receitas e despesas antigas
-            const incomesQuery = query(collection(db, "users", email, "incomes"));
-            const expensesQuery = query(collection(db, "users", email, "expenses"));
+            console.log("DEBUG: Deletando dados antigos...");
+            try {
+              const incomesQuery = query(collection(db, "users", email, "incomes"));
+              console.log("DEBUG: Query receitas criada");
+              const incomesSnapshot = await getDocs(incomesQuery);
+              console.log("DEBUG: Encontradas", incomesSnapshot.docs.length, "receitas antigas");
 
-            const incomesSnapshot = await getDocs(incomesQuery);
-            const expensesSnapshot = await getDocs(expensesQuery);
-
-            // Delete old incomes
-            for (const docSnapshot of incomesSnapshot.docs) {
-              await deleteDoc(docSnapshot.ref);
+              for (const docSnapshot of incomesSnapshot.docs) {
+                await deleteDoc(docSnapshot.ref);
+              }
+              console.log("DEBUG: Receitas antigas deletadas");
+            } catch (e) {
+              console.error("DEBUG: Erro ao deletar receitas:", e);
             }
-            // Delete old expenses
-            for (const docSnapshot of expensesSnapshot.docs) {
-              await deleteDoc(docSnapshot.ref);
+
+            try {
+              const expensesQuery = query(collection(db, "users", email, "expenses"));
+              console.log("DEBUG: Query despesas criada");
+              const expensesSnapshot = await getDocs(expensesQuery);
+              console.log("DEBUG: Encontradas", expensesSnapshot.docs.length, "despesas antigas");
+
+              for (const docSnapshot of expensesSnapshot.docs) {
+                await deleteDoc(docSnapshot.ref);
+              }
+              console.log("DEBUG: Despesas antigas deletadas");
+            } catch (e) {
+              console.error("DEBUG: Erro ao deletar despesas:", e);
             }
 
             // Add new incomes from result

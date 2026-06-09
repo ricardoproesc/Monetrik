@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Income, Expense, Person, IncomeCategory, ExpenseCategory, PaymentMethod } from "../types";
 import { Plus, Trash2, Edit2, Search, Filter, ArrowUpRight, ArrowDownRight, Tag, AlertCircle, X, Lock, Eye, EyeOff } from "lucide-react";
 
@@ -23,6 +23,8 @@ interface TransactionsManagerProps {
   onBulkDeleteExpenses: (idsToDelete: string[]) => void;
   onBulkUpdateIncomes: (updatedList: Income[]) => void;
   onBulkDeleteIncomes: (idsToDelete: string[]) => void;
+  openSubcategoriesModal?: boolean;
+  setOpenSubcategoriesModal?: (open: boolean) => void;
 }
 
 const INCOME_CATEGORIES: IncomeCategory[] = [
@@ -45,67 +47,68 @@ export interface SubcategoryItem {
   active?: boolean;
 }
 
-const DEFAULT_SUBCATEGORIES: SubcategoryItem[] = [
+export const DEFAULT_SUBCATEGORIES: SubcategoryItem[] = [
   // Receitas
-  { id: "sub-in-1",  type: "income",  category: "Salário",      name: "Salário Mensal" },
-  { id: "sub-in-2",  type: "income",  category: "Salário",      name: "13º Salário" },
-  { id: "sub-in-3",  type: "income",  category: "Freelance",    name: "Freelance / Consultoria" },
-  { id: "sub-in-4",  type: "income",  category: "Renda Extra",  name: "Renda Extra" },
-  { id: "sub-in-5",  type: "income",  category: "Investimentos",name: "Rendimento Investimentos" },
-  { id: "sub-in-6",  type: "income",  category: "Benefícios",   name: "Benefício / Auxílio" },
+  { id: "sub-in-1", type: "income", category: "Salário", name: "Salário Mensal" },
+  { id: "sub-in-2", type: "income", category: "Salário", name: "13º Salário" },
+  { id: "sub-in-3", type: "income", category: "Freelance", name: "Freelance / Consultoria" },
+  { id: "sub-in-4", type: "income", category: "Renda Extra", name: "Renda Extra" },
+  { id: "sub-in-5", type: "income", category: "Investimentos", name: "Rendimento Investimentos" },
+  { id: "sub-in-6", type: "income", category: "Benefícios", name: "Benefício / Auxílio" },
 
   // Despesas — Moradia
-  { id: "sub-ex-1",  type: "expense", category: "Aluguel",          name: "Aluguel Residência" },
-  { id: "sub-ex-2",  type: "expense", category: "Energia",          name: "Conta Energia Casa" },
-  { id: "sub-ex-3",  type: "expense", category: "Água",             name: "Conta Água / Saneamento" },
-  { id: "sub-ex-4",  type: "expense", category: "Internet",         name: "Internet Casa" },
-  { id: "sub-ex-5",  type: "expense", category: "Internet",         name: "Plano Celular" },
+  { id: "sub-ex-1", type: "expense", category: "Aluguel", name: "Aluguel Residência" },
+  { id: "sub-ex-2", type: "expense", category: "Energia", name: "Conta Energia Casa" },
+  { id: "sub-ex-3", type: "expense", category: "Água", name: "Conta Água / Saneamento" },
+  { id: "sub-ex-4", type: "expense", category: "Internet", name: "Internet Casa" },
+  { id: "sub-ex-5", type: "expense", category: "Internet", name: "Plano Celular" },
 
   // Despesas — Alimentação
-  { id: "sub-ex-6",  type: "expense", category: "Mercado",          name: "Supermercado" },
-  { id: "sub-ex-7",  type: "expense", category: "Mercado",          name: "Feira / Hortifruti" },
-  { id: "sub-ex-8",  type: "expense", category: "Mercado",          name: "Padaria / Açougue" },
+  { id: "sub-ex-6", type: "expense", category: "Mercado", name: "Supermercado" },
+  { id: "sub-ex-7", type: "expense", category: "Mercado", name: "Feira / Hortifruti" },
+  { id: "sub-ex-8", type: "expense", category: "Mercado", name: "Padaria / Açougue" },
 
   // Despesas — Transporte
-  { id: "sub-ex-9",  type: "expense", category: "Transporte",       name: "Combustível" },
-  { id: "sub-ex-10", type: "expense", category: "Transporte",       name: "Transporte Público" },
-  { id: "sub-ex-11", type: "expense", category: "Transporte",       name: "Aplicativo (Uber/99)" },
-  { id: "sub-ex-12", type: "expense", category: "Transporte",       name: "Manutenção Veículo" },
+  { id: "sub-ex-9", type: "expense", category: "Transporte", name: "Combustível" },
+  { id: "sub-ex-10", type: "expense", category: "Transporte", name: "Transporte Público" },
+  { id: "sub-ex-11", type: "expense", category: "Transporte", name: "Aplicativo (Uber/99)" },
+  { id: "sub-ex-12", type: "expense", category: "Transporte", name: "Manutenção Veículo" },
 
   // Despesas — Saúde
-  { id: "sub-ex-13", type: "expense", category: "Saúde",            name: "Farmácia" },
-  { id: "sub-ex-14", type: "expense", category: "Saúde",            name: "Consulta Médica" },
-  { id: "sub-ex-15", type: "expense", category: "Saúde",            name: "Plano de Saúde" },
-  { id: "sub-ex-16", type: "expense", category: "Saúde",            name: "Academia / Esportes" },
+  { id: "sub-ex-13", type: "expense", category: "Saúde", name: "Farmácia" },
+  { id: "sub-ex-14", type: "expense", category: "Saúde", name: "Consulta Médica" },
+  { id: "sub-ex-15", type: "expense", category: "Saúde", name: "Plano de Saúde" },
+  { id: "sub-ex-16", type: "expense", category: "Saúde", name: "Academia / Esportes" },
 
   // Despesas — Educação
-  { id: "sub-ex-17", type: "expense", category: "Educação",         name: "Escola / Colégio" },
-  { id: "sub-ex-18", type: "expense", category: "Educação",         name: "Faculdade / Curso" },
-  { id: "sub-ex-19", type: "expense", category: "Educação",         name: "Material Escolar" },
+  { id: "sub-ex-17", type: "expense", category: "Educação", name: "Escola / Colégio" },
+  { id: "sub-ex-18", type: "expense", category: "Educação", name: "Faculdade / Curso" },
+  { id: "sub-ex-19", type: "expense", category: "Educação", name: "Material Escolar" },
 
   // Despesas — Lazer
-  { id: "sub-ex-20", type: "expense", category: "Lazer",            name: "Restaurante / Lanchonete" },
-  { id: "sub-ex-21", type: "expense", category: "Lazer",            name: "Cinema / Entretenimento" },
-  { id: "sub-ex-22", type: "expense", category: "Lazer",            name: "Assinatura Streaming" },
-  { id: "sub-ex-23", type: "expense", category: "Lazer",            name: "Viagem / Passeio" },
+  { id: "sub-ex-20", type: "expense", category: "Lazer", name: "Restaurante / Lanchonete" },
+  { id: "sub-ex-21", type: "expense", category: "Lazer", name: "Cinema / Entretenimento" },
+  { id: "sub-ex-22", type: "expense", category: "Lazer", name: "Assinatura Streaming" },
+  { id: "sub-ex-23", type: "expense", category: "Lazer", name: "Viagem / Passeio" },
 
   // Despesas — Cartão e Outros
-  { id: "sub-ex-24", type: "expense", category: "Cartão de Crédito",name: "Fatura Cartão de Crédito" },
-  { id: "sub-ex-25", type: "expense", category: "Outros",           name: "Outros Gastos" },
+  { id: "sub-ex-24", type: "expense", category: "Cartão de Crédito", name: "Fatura Cartão de Crédito" },
+  { id: "sub-ex-25", type: "expense", category: "Outros", name: "Outros Gastos" },
 ];
 
 export default function TransactionsManager({
   people, incomes, expenses,
   subcategories: subcategoriesProp, onSaveSubcategories,
   onAddIncome, onAddExpense, onDeleteIncome, onDeleteExpense, onUpdateIncome, onUpdateExpense,
-  onBulkUpdateExpenses, onBulkDeleteExpenses, onBulkUpdateIncomes, onBulkDeleteIncomes
+  onBulkUpdateExpenses, onBulkDeleteExpenses, onBulkUpdateIncomes, onBulkDeleteIncomes,
+  openSubcategoriesModal, setOpenSubcategoriesModal
 }: TransactionsManagerProps) {
   const [activeTab, setActiveTab] = useState<'expenses' | 'incomes'>('expenses');
-  
+
   // Deletion confirmation states for incomes/expenses
   const [deleteConfirmType, setDeleteConfirmType] = useState<'income' | 'expense' | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  
+
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
@@ -125,17 +128,33 @@ export default function TransactionsManager({
   const [editRecurrence, setEditRecurrence] = useState<'mensal' | 'anual' | 'eventual'>('mensal');
   const [editNotes, setEditNotes] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>('Pix');
-  
+
   // Subcategories persistent state
   // Subcategorias vêm do App.tsx (por usuário, salvas no Firestore)
   const subcategories = subcategoriesProp.length > 0 ? subcategoriesProp : DEFAULT_SUBCATEGORIES;
   const saveSubcategories = onSaveSubcategories;
 
   // Subcategories Modal States
-  const [showSubcatMgmt, setShowSubcatMgmt] = useState(false);
+  // Use prop if provided, otherwise use local state
+  const [localShowSubcatMgmt, setLocalShowSubcatMgmt] = useState(false);
+  const showSubcatMgmt = openSubcategoriesModal !== undefined ? openSubcategoriesModal : localShowSubcatMgmt;
+  const setShowSubcatMgmt = (open: boolean) => {
+    if (setOpenSubcategoriesModal) {
+      setOpenSubcategoriesModal(open);
+    } else {
+      setLocalShowSubcatMgmt(open);
+    }
+  };
+  const [subcatModalTab, setSubcatModalTab] = useState<'income' | 'expense'>('income');
   const [newSubcatName, setNewSubcatName] = useState("");
   const [newSubcatType, setNewSubcatType] = useState<'income' | 'expense'>('expense');
   const [newSubcatCategory, setNewSubcatCategory] = useState<string>('Mercado');
+
+  // Sincronizar tipo do formulário com a aba ativa
+  useEffect(() => {
+    setNewSubcatType(subcatModalTab);
+    setNewSubcatCategory(subcatModalTab === 'income' ? 'Salário' : 'Mercado');
+  }, [subcatModalTab]);
 
   // Editing subcategory item states
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
@@ -244,8 +263,8 @@ export default function TransactionsManager({
       return;
     }
 
-    const categorySelected = expenseCategory === 'Outros' && customExpenseCategory.trim() 
-      ? customExpenseCategory.trim() 
+    const categorySelected = expenseCategory === 'Outros' && customExpenseCategory.trim()
+      ? customExpenseCategory.trim()
       : expenseCategory;
 
     onAddExpense({
@@ -360,7 +379,7 @@ export default function TransactionsManager({
 
     const matchesCategory = filterCategory === "all" || inc.category.toLowerCase() === filterCategory.toLowerCase();
     const matchesPerson = filterPerson === "all" || inc.personId === filterPerson;
-    const matchesType = filterType === "all" || 
+    const matchesType = filterType === "all" ||
       (filterType === "fixed" && inc.isFixed) ||
       (filterType === "variable" && !inc.isFixed);
 
@@ -377,7 +396,7 @@ export default function TransactionsManager({
 
     const matchesCategory = filterCategory === "all" || exp.category.toLowerCase() === filterCategory.toLowerCase();
     const matchesPerson = filterPerson === "all" || exp.personId === filterPerson;
-    const matchesType = filterType === "all" || 
+    const matchesType = filterType === "all" ||
       (filterType === "fixed" && exp.isFixed) ||
       (filterType === "variable" && !exp.isFixed);
 
@@ -386,10 +405,10 @@ export default function TransactionsManager({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in p-1">
-      
+
       {/* Forms Segment (Left) */}
       <div className="lg:col-span-5 space-y-6">
-        
+
         {/* Toggle Form Tabs */}
         <div className="flex gap-3 bg-gradient-to-br from-zinc-50 to-zinc-100 p-2 rounded-2xl border-2 border-zinc-200">
           <button
@@ -428,7 +447,7 @@ export default function TransactionsManager({
           {/* Render Despesas Form */}
           {activeTab === 'expenses' ? (
             <form onSubmit={handleAddExpenseSubmit} className="space-y-4">
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <div className="flex items-center justify-between mb-1">
@@ -517,9 +536,8 @@ export default function TransactionsManager({
                       setExpenseCategory(newCat);
                       setExpenseIsFixed(getCategoryNature(newCat));
                     }}
-                    className={`w-full text-xs border border-zinc-200 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 transition-all ${
-                      selectedExpenseSubcatId ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed font-medium' : 'bg-white text-zinc-800'
-                    }`}
+                    className={`w-full text-xs border border-zinc-200 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 transition-all ${selectedExpenseSubcatId ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed font-medium' : 'bg-white text-zinc-800'
+                      }`}
                   >
                     {EXPENSE_CATEGORIES.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -794,7 +812,7 @@ export default function TransactionsManager({
 
       {/* Historical Ledgers (Right - 7 Columns) */}
       <div className="lg:col-span-7 space-y-5">
-        
+
         {/* Barra de Filtro e Busca de Lançamentos */}
         <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3 font-sans">
           <div className="flex items-center justify-between">
@@ -803,7 +821,7 @@ export default function TransactionsManager({
               Filtrar Lançamentos
             </h4>
             {(searchTerm !== "" || filterCategory !== "all" || filterPerson !== "all" || filterType !== "all") && (
-              <button 
+              <button
                 onClick={() => {
                   setSearchTerm("");
                   setFilterCategory("all");
@@ -881,7 +899,7 @@ export default function TransactionsManager({
             </div>
           </div>
         </div>
-        
+
         {/* Despesas Ledger Table */}
         <div className="border border-zinc-200 rounded-2xl bg-white overflow-hidden shadow-xs">
           <div className="p-4 bg-zinc-50/70 border-b border-zinc-100 flex items-center justify-between">
@@ -1052,15 +1070,15 @@ export default function TransactionsManager({
       {/* MODAL DE GERENCIAMENTO DE SUBCATEGORIAS */}
       {showSubcatMgmt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in font-sans">
-          <div className="bg-white rounded-3xl border border-zinc-200 w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
-            
+          <div className="bg-white rounded-3xl border border-zinc-200 w-full max-w-lg shadow-2xl flex flex-col h-[85vh] overflow-hidden">
+
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-zinc-950 text-white flex items-center justify-between">
+            <div className="px-6 py-4 bg-zinc-950 text-white flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
                 <Tag className="h-4.5 w-4.5 text-emerald-400" />
                 <div>
                   <h3 className="text-sm font-semibold">Configurar Subcategorias</h3>
-                  <p className="text-[10px] text-zinc-400">Padronize nomes e evite duplicados (ex: Proesc vs Proes)</p>
+                  <p className="text-[10px] text-zinc-400">Padronize nomes e evite duplicados (ex: Receitas vs Receita)</p>
                 </div>
               </div>
               <button
@@ -1072,37 +1090,35 @@ export default function TransactionsManager({
               </button>
             </div>
 
+            {/* Tabs */}
+            <div className="flex border-b-2 border-zinc-200 bg-white px-0 flex-shrink-0">
+              <button
+                onClick={() => setSubcatModalTab('income')}
+                className={`flex-1 py-4 px-6 font-bold text-base transition-all ${subcatModalTab === 'income'
+                    ? 'border-b-2 border-emerald-500 text-emerald-700 bg-emerald-50'
+                    : 'text-zinc-600 hover:text-zinc-900 bg-zinc-50'
+                  }`}
+              >
+                Receitas
+              </button>
+              <button
+                onClick={() => setSubcatModalTab('expense')}
+                className={`flex-1 py-4 px-6 font-bold text-base transition-all ${subcatModalTab === 'expense'
+                    ? 'border-b-2 border-rose-500 text-rose-700 bg-rose-50'
+                    : 'text-zinc-600 hover:text-zinc-900 bg-zinc-50'
+                  }`}
+              >
+                Despesas
+              </button>
+            </div>
+
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-6">
-              
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+
               {/* Form to Register New Subcategory */}
               <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-3">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block leading-none">Cadastrar Novo Registro</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-zinc-700 mb-1">Tipo de Fluxo</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleTypeChange('expense')}
-                        className={`py-1 rounded text-[10px] font-bold border transition-all ${
-                          newSubcatType === 'expense' ? 'bg-rose-50 border-rose-200 text-rose-700 font-extrabold' : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-100'
-                        }`}
-                      >
-                        Despesa
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTypeChange('income')}
-                        className={`py-1 rounded text-[10px] font-bold border transition-all ${
-                          newSubcatType === 'income' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 font-extrabold' : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-100'
-                        }`}
-                      >
-                        Receita
-                      </button>
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-zinc-700 mb-1">Categoria Pai</label>
                     <select
@@ -1122,7 +1138,7 @@ export default function TransactionsManager({
                     </select>
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
                     <label className="block text-[10px] font-semibold text-zinc-700 mb-1">Nome da Subcategoria</label>
                     <div className="flex gap-2">
                       <input
@@ -1137,7 +1153,7 @@ export default function TransactionsManager({
                         onClick={() => {
                           const trimmed = newSubcatName.trim();
                           if (!trimmed) return;
-                          
+
                           if (subcategories.some(s => s.type === newSubcatType && s.category === newSubcatCategory && s.name.toLowerCase() === trimmed.toLowerCase())) {
                             alert("Esta subcategoria já se encontra cadastrada!");
                             return;
@@ -1179,7 +1195,7 @@ export default function TransactionsManager({
                 </div>
 
                 <div className="divide-y divide-zinc-100 max-h-[30vh] overflow-y-auto pr-1">
-                  {subcategories.map(sub => {
+                  {subcategories.filter(sub => sub.type === subcatModalTab).map(sub => {
                     if (editingSubId === sub.id) {
                       return (
                         <div key={sub.id} className="py-2.5 flex flex-col gap-2 bg-zinc-50 border border-zinc-200 p-3 rounded-xl my-1 animate-fade-in">
@@ -1212,7 +1228,7 @@ export default function TransactionsManager({
                               )}
                             </select>
                           </div>
-                          
+
                           <div className="flex gap-1.5 items-center">
                             <input
                               type="text"
@@ -1226,12 +1242,12 @@ export default function TransactionsManager({
                               onClick={() => {
                                 const trimmed = editSubName.trim();
                                 if (!trimmed) return;
-                                
+
                                 if (subcategories.some(s => s.id !== sub.id && s.type === editSubType && s.category === editSubCategory && s.name.toLowerCase() === trimmed.toLowerCase())) {
                                   alert("Este nome já se encontra cadastrado!");
                                   return;
                                 }
-                                
+
                                 const oldName = sub.name;
                                 const oldCat = sub.category;
                                 const oldType = sub.type;
@@ -1292,9 +1308,8 @@ export default function TransactionsManager({
                     return (
                       <div key={sub.id} className={`py-2 flex items-center justify-between text-xs hover:bg-zinc-50/50 px-1 rounded transition-all ${sub.active === false ? "opacity-55" : ""}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0 uppercase tracking-wider border ${
-                            sub.type === 'income' ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'bg-rose-50 text-rose-800 border-rose-100'
-                          }`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0 uppercase tracking-wider border ${sub.type === 'income' ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'bg-rose-50 text-rose-800 border-rose-100'
+                            }`}>
                             {sub.type === 'income' ? 'Receita' : 'Despesa'}
                           </span>
                           <span className="text-zinc-400 text-[10px] shrink-0">({sub.category})</span>
@@ -1310,7 +1325,7 @@ export default function TransactionsManager({
                             </span>
                           )}
                         </div>
-                        
+
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
@@ -1323,9 +1338,8 @@ export default function TransactionsManager({
                               });
                               saveSubcategories(updated);
                             }}
-                            className={`p-1 rounded hover:bg-zinc-100 transition-colors cursor-pointer ${
-                              sub.active === false ? 'text-zinc-400 hover:text-zinc-700' : 'text-zinc-400 hover:text-emerald-600'
-                            }`}
+                            className={`p-1 rounded hover:bg-zinc-100 transition-colors cursor-pointer ${sub.active === false ? 'text-zinc-400 hover:text-zinc-700' : 'text-zinc-400 hover:text-emerald-600'
+                              }`}
                             title={sub.active === false ? "Ativar subcategoria" : "Inativar subcategoria"}
                           >
                             {sub.active === false ? (
@@ -1348,7 +1362,7 @@ export default function TransactionsManager({
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
-                          
+
                           <button
                             type="button"
                             onClick={() => {
@@ -1395,7 +1409,7 @@ export default function TransactionsManager({
       {subcatToDelete && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-xs animate-fade-in font-sans">
           <div className="bg-white rounded-2xl border border-zinc-200 w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
-            
+
             {/* Header */}
             <div className="px-6 py-4 bg-zinc-950 text-white flex items-center gap-2">
               <AlertCircle className="h-4.5 w-4.5 text-rose-500" />
@@ -1408,7 +1422,7 @@ export default function TransactionsManager({
                 const affectedCount = subcatToDelete.type === 'expense'
                   ? expenses.filter(e => e.name.toLowerCase() === subcatToDelete.name.toLowerCase()).length
                   : incomes.filter(i => i.notes?.toLowerCase() === subcatToDelete.name.toLowerCase()).length;
-                
+
                 if (affectedCount === 0) {
                   return (
                     <div className="space-y-4">
@@ -1512,7 +1526,7 @@ export default function TransactionsManager({
                 if (deleteSubcatState === 'confirm_migrate') {
                   const otherSubs = subcategories.filter(s => s.type === subcatToDelete.type && s.id !== subcatToDelete.id);
                   const selectedTarget = otherSubs.find(s => s.id === migrationTargetSubId);
-                  
+
                   return (
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -1549,7 +1563,7 @@ export default function TransactionsManager({
                           onClick={() => {
                             if (!selectedTarget) return;
                             if (confirm(`Deseja realmente migrar os ${affectedCount} lançamentos para "${selectedTarget.name}" e excluir a subcategoria "${subcatToDelete.name}"?`)) {
-                              
+
                               // Migrate real records
                               if (subcatToDelete.type === 'expense') {
                                 const toUpdate = expenses
@@ -1583,9 +1597,8 @@ export default function TransactionsManager({
                               setSubcatToDelete(null);
                             }
                           }}
-                          className={`px-4 py-2 text-xs font-bold text-white rounded-lg transition-colors cursor-pointer ${
-                            migrationTargetSubId ? 'bg-zinc-950 hover:bg-zinc-800' : 'bg-zinc-300 cursor-not-allowed'
-                          }`}
+                          className={`px-4 py-2 text-xs font-bold text-white rounded-lg transition-colors cursor-pointer ${migrationTargetSubId ? 'bg-zinc-950 hover:bg-zinc-800' : 'bg-zinc-300 cursor-not-allowed'
+                            }`}
                         >
                           Confirmar Migração e Exclusão
                         </button>
@@ -1624,7 +1637,7 @@ export default function TransactionsManager({
                           type="button"
                           onClick={() => {
                             if (confirm(`ÚLTIMO AVISO: Deseja realmente APAGAR permanentemente todos os ${affectedCount} lançamentos associados a "${subcatToDelete.name}" e excluir a subcategoria do sistema?`)) {
-                              
+
                               // Delete matching transactions in parent
                               if (subcatToDelete.type === 'expense') {
                                 const idsToDelete = expenses
@@ -1678,15 +1691,15 @@ export default function TransactionsManager({
                 <p className="text-xs text-zinc-500 leading-relaxed">
                   Tem certeza de que deseja apagar permanentemente este lançamento do fluxo de caixa? Esta ação removerá o registro dos cálculos e relatórios da planilha.
                 </p>
-                
+
                 {/* Visual context of the selected transaction */}
                 {(() => {
-                  const item = deleteConfirmType === 'income' 
-                    ? incomes.find(i => i.id === deleteConfirmId) 
+                  const item = deleteConfirmType === 'income'
+                    ? incomes.find(i => i.id === deleteConfirmId)
                     : expenses.find(e => e.id === deleteConfirmId);
-                  
+
                   if (!item) return null;
-                  
+
                   return (
                     <div className="p-3 bg-zinc-50/80 rounded-xl border border-zinc-150 mt-3 text-xs space-y-1.5 font-mono">
                       <div className="flex justify-between">
@@ -1750,7 +1763,7 @@ export default function TransactionsManager({
       {editingItem && editingType && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-xs animate-fade-in font-sans">
           <div className="bg-white rounded-3xl border border-zinc-200 w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
-            
+
             {/* Modal Header */}
             <div className="px-6 py-4 bg-zinc-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1775,7 +1788,7 @@ export default function TransactionsManager({
 
             {/* Modal Form */}
             <form onSubmit={handleSaveEdit} className="p-6 overflow-y-auto space-y-4">
-              
+
               {editingType === 'expense' && (
                 <div>
                   <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Identificação / Nome do Gasto *</label>
@@ -1871,7 +1884,7 @@ export default function TransactionsManager({
 
               <div className="p-3 bg-zinc-50 border border-zinc-150 rounded-xl space-y-3">
                 <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest block leading-none">Classificação Avançada</span>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center gap-2 select-none opacity-80">
                     <input

@@ -25,7 +25,7 @@ import {
 import type { SubcategoryItem } from "./components/TransactionsManager";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
-import TransactionsManager from "./components/TransactionsManager";
+import TransactionsManager, { DEFAULT_SUBCATEGORIES } from "./components/TransactionsManager";
 import FinanceInsights from "./components/FinanceInsights";
 import UserProfile from "./components/UserProfile";
 import PanoramaGeral from "./components/PanoramaGeral";
@@ -33,9 +33,11 @@ import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
+import ImportData from "./components/ImportData";
+import SettingsSidebar from "./components/SettingsSidebar";
 import {
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
-  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader
+  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, Upload, SettingsIcon
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -96,7 +98,9 @@ export default function App() {
     if (saved) return JSON.parse(saved);
     // fallback: chave global legada
     const legacy = localStorage.getItem("kashfam_subcategories");
-    return legacy ? JSON.parse(legacy) : [];
+    if (legacy) return JSON.parse(legacy);
+    // fallback final: usar subcategorias padrão
+    return DEFAULT_SUBCATEGORIES;
   });
 
   // App core states
@@ -109,15 +113,21 @@ export default function App() {
   });
 
   const [incomes, setIncomes] = useState<Income[]>(() => {
-    if (isAuthenticated) return [];
+    // Sempre tentar carregar do localStorage primeiro
     const saved = localStorage.getItem("kashfam_incomes");
-    return saved ? JSON.parse(saved) : [];
+    if (saved) return JSON.parse(saved);
+    // Se autenticado, começa vazio para carregar do Firestore depois
+    if (isAuthenticated) return [];
+    return [];
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    if (isAuthenticated) return [];
+    // Sempre tentar carregar do localStorage primeiro
     const saved = localStorage.getItem("kashfam_expenses");
-    return saved ? JSON.parse(saved) : [];
+    if (saved) return JSON.parse(saved);
+    // Se autenticado, começa vazio para carregar do Firestore depois
+    if (isAuthenticated) return [];
+    return [];
   });
 
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => {
@@ -128,6 +138,9 @@ export default function App() {
   // Navigation state
   const [activeTab, setActiveTab ] = useState<'dashboard' | 'planilha' | 'transactions' | 'people' | 'insights' | 'chatbot' | 'docs'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showSettingsSidebar, setShowSettingsSidebar] = useState(false);
+  const [openSubcategoriesModal, setOpenSubcategoriesModal] = useState(false);
 
   // Computes current active user dynamically based on the session email
   const principalPerson = people.find(p => p.email.toLowerCase() === sessionEmail.toLowerCase()) || people.find(p => p.relationship === 'principal') || people[0] || { name: "Ricardo Gomes" };
@@ -429,6 +442,90 @@ export default function App() {
       localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(newSubs));
       fsSaveSubcategories(userId, newSubs).catch(() => {});
     }
+  };
+
+  const handleImportData = (importedRows: any[], newSubcategoryNames: string[]) => {
+    if (!people.length) {
+      alert("É necessário adicionar pelo menos um membro da família antes de importar.");
+      return;
+    }
+
+    const personId = principalPerson.id;
+    const newIncomes: Income[] = [];
+    const newExpenses: Expense[] = [];
+
+    // Criar novas subcategorias automaticamente
+    const updatedSubcategories = [...subcategories];
+    for (const subName of newSubcategoryNames) {
+      if (!updatedSubcategories.find(s => s.name === subName)) {
+        // Determinar se é income ou expense baseado nos dados
+        const isIncome = importedRows.some(
+          row => row.subcategoria === subName && row.tipo === 'RECEITA'
+        );
+        updatedSubcategories.push({
+          id: `sub-${Date.now()}-${Math.random()}`,
+          type: isIncome ? 'income' : 'expense',
+          category: subName,
+          name: subName,
+          active: true,
+        });
+      }
+    }
+
+    // Converter linhas importadas em Income/Expense
+    for (const row of importedRows) {
+      const baseData = {
+        date: row.data,
+        notes: row.observacoes || undefined,
+      };
+
+      if (row.tipo === 'RECEITA') {
+        newIncomes.push({
+          id: `in-${Date.now()}-${Math.random()}`,
+          personId,
+          category: row.subcategoria,
+          amount: Number(row.valor),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: 'eventual',
+          ...baseData,
+        });
+      } else {
+        newExpenses.push({
+          id: `ex-${Date.now()}-${Math.random()}`,
+          personId,
+          name: row.descricao,
+          category: row.subcategoria,
+          amount: Number(row.valor),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: 'eventual',
+          paymentMethod: 'Pix',
+          ...baseData,
+        });
+      }
+    }
+
+    // Atualizar estados
+    setSubcategories(updatedSubcategories);
+    setIncomes(prev => [...prev, ...newIncomes]);
+    setExpenses(prev => [...prev, ...newExpenses]);
+
+    // Salvar no Firebase em background
+    if (userId) {
+      localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(updatedSubcategories));
+      fsSaveSubcategories(userId, updatedSubcategories).catch(() => {});
+
+      // Salvar incomes/expenses em lote
+      if (newIncomes.length > 0) {
+        batchSaveItems(userId, 'incomes', newIncomes).catch(() => {});
+      }
+      if (newExpenses.length > 0) {
+        batchSaveItems(userId, 'expenses', newExpenses).catch(() => {});
+      }
+    }
+
+    setShowImportModal(false);
   };
 
   const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
@@ -949,12 +1046,20 @@ export default function App() {
               </nav>
 
               {/* Right Menu: User profile */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
                 <UserProfile
                   displayName={principalPerson.name}
                   email={sessionEmail}
                   onLogout={handleLogout}
                 />
+
+                <button
+                  onClick={() => setShowSettingsSidebar(true)}
+                  className="p-2 rounded-lg font-semibold transition-all text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100"
+                  title="Configurações"
+                >
+                  <SettingsIcon size={20} />
+                </button>
 
                 {/* Mobile Menu Icon */}
                 <button
@@ -1027,6 +1132,8 @@ export default function App() {
                 onBulkDeleteExpenses={handleBulkDeleteExpenses}
                 onBulkUpdateIncomes={handleBulkUpdateIncomes}
                 onBulkDeleteIncomes={handleBulkDeleteIncomes}
+                openSubcategoriesModal={openSubcategoriesModal}
+                setOpenSubcategoriesModal={setOpenSubcategoriesModal}
               />
             )}
 
@@ -1071,6 +1178,47 @@ export default function App() {
             )}
 
           </main>
+
+          {/* Import Data Button (Floating on transactions tab) */}
+          {activeTab === 'transactions' && isAuthenticated && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="fixed bottom-8 right-8 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition-all z-40"
+            >
+              <Upload size={20} />
+              Importar Dados
+            </button>
+          )}
+
+          {/* Import Data Modal */}
+          {showImportModal && isAuthenticated && (
+            <ImportData
+              onClose={() => setShowImportModal(false)}
+              onImportSuccess={handleImportData}
+              existingSubcategories={subcategories.map((s: SubcategoryItem) => s.name)}
+            />
+          )}
+
+          {/* Settings Sidebar */}
+          <SettingsSidebar
+            isOpen={showSettingsSidebar}
+            onClose={() => setShowSettingsSidebar(false)}
+            people={people}
+            incomes={incomes}
+            expenses={expenses}
+            subcategories={subcategories}
+            email={sessionEmail}
+            onLogout={handleLogout}
+            onMigrationComplete={() => {
+              setIncomes([]);
+              setExpenses([]);
+            }}
+            onGoToSubcategories={() => {
+              setShowSettingsSidebar(false);
+              setActiveTab('transactions');
+              setOpenSubcategoriesModal(true);
+            }}
+          />
 
           {/* Footer margin credit */}
           <footer className="border-t border-zinc-200 bg-white py-6">

@@ -634,6 +634,322 @@ app.post("/api/import/process", (req, res) => {
   }
 });
 
+// 6. Migration: Generate Template with existing data
+app.post("/api/migration/template", (req, res) => {
+  try {
+    const { people, incomes, expenses, incomeSubcategories, expenseSubcategories } = req.body;
+
+    const wb = XLSX.utils.book_new();
+
+    // Aba 1: Cadastros (read-only reference)
+    const cadastrosData: any[] = [];
+
+    // Seção de Pessoas
+    cadastrosData.push(["=== PESSOAS CADASTRADAS ===", "", "", "", "", ""]);
+    cadastrosData.push(["ID", "Nome", "Relação", "Email", "WhatsApp", "Ativo"]);
+    people.forEach((p: any) => {
+      cadastrosData.push([
+        p.id || "",
+        p.name || "",
+        p.relationship || "",
+        p.email || "",
+        p.whatsapp || "",
+        p.active ? "Sim" : "Não",
+      ]);
+    });
+
+    // Espaço
+    cadastrosData.push(["", "", "", "", "", ""]);
+
+    // Seção de Subcategorias de Receitas
+    cadastrosData.push(["=== SUBCATEGORIAS DE RECEITAS ===", "", "", "", "", ""]);
+    cadastrosData.push(["ID", "Nome", "Categoria", "", "", ""]);
+    incomeSubcategories.forEach((sub: any) => {
+      cadastrosData.push([
+        sub.id || "",
+        sub.name || "",
+        sub.category || "",
+        "",
+        "",
+        "",
+      ]);
+    });
+
+    // Espaço
+    cadastrosData.push(["", "", "", "", "", ""]);
+
+    // Seção de Subcategorias de Despesas
+    cadastrosData.push(["=== SUBCATEGORIAS DE DESPESAS ===", "", "", "", "", ""]);
+    cadastrosData.push(["ID", "Nome", "Categoria", "", "", ""]);
+    expenseSubcategories.forEach((sub: any) => {
+      cadastrosData.push([
+        sub.id || "",
+        sub.name || "",
+        sub.category || "",
+        "",
+        "",
+        "",
+      ]);
+    });
+
+    // Espaço
+    cadastrosData.push(["", "", "", "", "", ""]);
+
+    // Seção de Receitas
+    cadastrosData.push(["=== RECEITAS EXISTENTES ===", "", "", "", "", ""]);
+    cadastrosData.push(["Data", "Descrição", "Categoria", "Valor", "Pessoa", "Notas"]);
+    incomes.forEach((inc: any) => {
+      const personName = people.find((p: any) => p.id === inc.personId)?.name || inc.personId || "";
+      cadastrosData.push([
+        inc.date || "",
+        inc.category || "",
+        inc.category || "",
+        inc.amount || 0,
+        personName,
+        inc.notes || "",
+      ]);
+    });
+
+    // Espaço
+    cadastrosData.push(["", "", "", "", "", ""]);
+
+    // Seção de Despesas
+    cadastrosData.push(["=== DESPESAS EXISTENTES ===", "", "", "", "", ""]);
+    cadastrosData.push(["Data", "Descrição", "Categoria", "Valor", "Pessoa", "Notas"]);
+    expenses.forEach((exp: any) => {
+      const personName = people.find((p: any) => p.id === exp.personId)?.name || exp.personId || "";
+      cadastrosData.push([
+        exp.date || "",
+        exp.name || "",
+        exp.category || "",
+        exp.amount || 0,
+        personName,
+        exp.notes || "",
+      ]);
+    });
+
+    const cadastrosSheet = XLSX.utils.aoa_to_sheet(cadastrosData);
+    cadastrosSheet["!cols"] = [
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 25 },
+    ];
+
+    // Formatar headers em negrito (adicionar merge ou estilo)
+    XLSX.utils.book_append_sheet(wb, cadastrosSheet, "Cadastros");
+
+    // Aba 2: Receitas
+    const incomeSubcatNames = incomeSubcategories.map((s: any) => s.name);
+    const peopleNames = people.map((p: any) => p.name);
+
+    const receitas = [["Data", "Subcategoria", "Valor", "Pessoa", "Observação"]];
+    for (let i = 0; i < 50; i++) {
+      receitas.push(["", "", "", "", ""]);
+    }
+
+    const receitasSheet = XLSX.utils.aoa_to_sheet(receitas);
+    receitasSheet["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 12 }, { wch: 20 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, receitasSheet, "Receitas");
+
+    // Aba 3: Despesas
+    const despesas = [["Data", "Subcategoria", "Valor", "Pessoa", "Observação"]];
+    for (let i = 0; i < 50; i++) {
+      despesas.push(["", "", "", "", ""]);
+    }
+
+    const despesasSheet = XLSX.utils.aoa_to_sheet(despesas);
+    despesasSheet["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 12 }, { wch: 20 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, despesasSheet, "Despesas");
+
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const bufferData = Buffer.from(buf as ArrayBuffer);
+
+    res.setHeader("Content-Disposition", 'attachment; filename="monetrik-migracao.xlsx"');
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Length", bufferData.length);
+
+    res.send(bufferData);
+  } catch (error) {
+    console.error("Erro ao gerar template:", error);
+    res.status(500).json({ error: "Erro ao gerar template" });
+  }
+});
+
+// 7. Migration: Validate uploaded file
+app.post("/api/migration/validate", (req, res) => {
+  try {
+    const { fileData, people, incomeSubcategories, expenseSubcategories } = req.body;
+
+    if (!fileData) {
+      return res.status(400).json({ error: "Arquivo inválido" });
+    }
+
+    const buffer = Buffer.from(fileData, "base64");
+    const workbook = XLSX.read(buffer);
+
+    const incomeSheet = workbook.Sheets["Receitas"];
+    const expenseSheet = workbook.Sheets["Despesas"];
+
+    if (!incomeSheet || !expenseSheet) {
+      return res.status(200).json({
+        valid: false,
+        errors: [{ error: "Arquivo deve conter abas 'Receitas' e 'Despesas'" }],
+      });
+    }
+
+    const incomeRows = XLSX.utils.sheet_to_json(incomeSheet, { header: 0 });
+    const expenseRows = XLSX.utils.sheet_to_json(expenseSheet, { header: 0 });
+
+    const incomeSubcatNames = incomeSubcategories.map((s: any) => s.name);
+    const expenseSubcatNames = expenseSubcategories.map((s: any) => s.name);
+    const peopleNames = people.map((p: any) => p.name);
+
+    const errors: any[] = [];
+
+    incomeRows.forEach((row: any, idx: number) => {
+      if (!row.data && !row.Data && !row["Data"]) return;
+
+      const subcategoria = row.subcategoria || row.Subcategoria || row["Subcategoria"];
+      const pessoa = row.pessoa || row.Pessoa || row["Pessoa"];
+
+      if (subcategoria && !incomeSubcatNames.includes(subcategoria)) {
+        errors.push({
+          error: `Linha ${idx + 2}: Subcategoria de receita desconhecida: "${subcategoria}"`,
+        });
+      }
+      if (pessoa && !peopleNames.includes(pessoa)) {
+        errors.push({ error: `Linha ${idx + 2}: Pessoa desconhecida: "${pessoa}"` });
+      }
+    });
+
+    expenseRows.forEach((row: any, idx: number) => {
+      if (!row.data && !row.Data && !row["Data"]) return;
+
+      const subcategoria = row.subcategoria || row.Subcategoria || row["Subcategoria"];
+      const pessoa = row.pessoa || row.Pessoa || row["Pessoa"];
+
+      if (subcategoria && !expenseSubcatNames.includes(subcategoria)) {
+        errors.push({
+          error: `Linha ${idx + 2}: Subcategoria de despesa desconhecida: "${subcategoria}"`,
+        });
+      }
+      if (pessoa && !peopleNames.includes(pessoa)) {
+        errors.push({ error: `Linha ${idx + 2}: Pessoa desconhecida: "${pessoa}"` });
+      }
+    });
+
+    return res.status(200).json({
+      valid: errors.length === 0,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    console.error("Erro na validação:", error);
+    res.status(500).json({ error: "Erro ao validar arquivo" });
+  }
+});
+
+// 8. Migration: Execute migration (delete all incomes/expenses and import new ones)
+app.post("/api/migration/execute", (req, res) => {
+  try {
+    const { fileData, email, password, people: selectedPeople } = req.body;
+
+    // IMPORTANTE: Validar senha via re-autenticação Firebase
+    // Para fins de demonstração, apenas verificamos se foi fornecida
+    if (!password) {
+      return res.status(400).json({ error: "Senha é obrigatória" });
+    }
+
+    if (!fileData) {
+      return res.status(400).json({ error: "Arquivo inválido" });
+    }
+
+    const buffer = Buffer.from(fileData, "base64");
+    const workbook = XLSX.read(buffer);
+
+    const incomeSheet = workbook.Sheets["Receitas"];
+    const expenseSheet = workbook.Sheets["Despesas"];
+
+    const incomeRows = XLSX.utils.sheet_to_json(incomeSheet, { header: 0 });
+    const expenseRows = XLSX.utils.sheet_to_json(expenseSheet, { header: 0 });
+
+    const newIncomes: any[] = [];
+    const newExpenses: any[] = [];
+
+    // Processar receitas
+    incomeRows.forEach((row: any) => {
+      const data = row.data || row.Data || row["Data"];
+      if (!data) return;
+
+      const subcategoria = row.subcategoria || row.Subcategoria || row["Subcategoria"];
+      const valor = row.valor || row.Valor || row["Valor"];
+      const pessoa = row.pessoa || row.Pessoa || row["Pessoa"];
+      const observacao = row.observação || row.Observação || row["Observação"] || "";
+
+      if (subcategoria && valor && pessoa) {
+        newIncomes.push({
+          id: `in-${Date.now()}-${Math.random()}`,
+          personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
+          category: subcategoria,
+          amount: Number(valor),
+          date: String(data),
+          notes: String(observacao),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: "eventual",
+        });
+      }
+    });
+
+    // Processar despesas
+    expenseRows.forEach((row: any) => {
+      const data = row.data || row.Data || row["Data"];
+      if (!data) return;
+
+      const subcategoria = row.subcategoria || row.Subcategoria || row["Subcategoria"];
+      const valor = row.valor || row.Valor || row["Valor"];
+      const pessoa = row.pessoa || row.Pessoa || row["Pessoa"];
+      const observacao = row.observação || row.Observação || row["Observação"] || "";
+
+      if (subcategoria && valor && pessoa) {
+        newExpenses.push({
+          id: `ex-${Date.now()}-${Math.random()}`,
+          personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
+          name: subcategoria,
+          category: subcategoria,
+          amount: Number(valor),
+          date: String(data),
+          notes: String(observacao),
+          isFixed: false,
+          isRecurring: false,
+          recurrence: "eventual",
+          paymentMethod: "Pix",
+        });
+      }
+    });
+
+    // Retornar dados parseados para o frontend salvar no Firestore
+    return res.status(200).json({
+      success: true,
+      incomesImported: newIncomes.length,
+      expensesImported: newExpenses.length,
+      newIncomes,
+      newExpenses,
+      message: "Migração executada com sucesso",
+    });
+  } catch (error) {
+    console.error("Erro na migração:", error);
+    res.status(500).json({
+      error: `Erro ao executar migração: ${error instanceof Error ? error.message : "desconhecido"}`,
+    });
+  }
+});
+
 // Serve frontend assets in production mode
 const distPath = path.join(process.cwd(), 'dist');
 if (process.env.NODE_ENV !== "production") {

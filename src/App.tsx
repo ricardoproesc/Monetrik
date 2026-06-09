@@ -25,7 +25,7 @@ import {
 import type { SubcategoryItem } from "./components/TransactionsManager";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
-import TransactionsManager from "./components/TransactionsManager";
+import TransactionsManager, { DEFAULT_SUBCATEGORIES } from "./components/TransactionsManager";
 import FinanceInsights from "./components/FinanceInsights";
 import UserProfile from "./components/UserProfile";
 import PanoramaGeral from "./components/PanoramaGeral";
@@ -34,9 +34,10 @@ import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
 import ImportData from "./components/ImportData";
+import SettingsSidebar from "./components/SettingsSidebar";
 import {
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
-  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, Upload
+  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, Upload, SettingsIcon
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -97,7 +98,9 @@ export default function App() {
     if (saved) return JSON.parse(saved);
     // fallback: chave global legada
     const legacy = localStorage.getItem("kashfam_subcategories");
-    return legacy ? JSON.parse(legacy) : [];
+    if (legacy) return JSON.parse(legacy);
+    // fallback final: usar subcategorias padrão
+    return DEFAULT_SUBCATEGORIES;
   });
 
   // App core states
@@ -110,15 +113,21 @@ export default function App() {
   });
 
   const [incomes, setIncomes] = useState<Income[]>(() => {
-    if (isAuthenticated) return [];
+    // Sempre tentar carregar do localStorage primeiro
     const saved = localStorage.getItem("kashfam_incomes");
-    return saved ? JSON.parse(saved) : [];
+    if (saved) return JSON.parse(saved);
+    // Se autenticado, começa vazio para carregar do Firestore depois
+    if (isAuthenticated) return [];
+    return [];
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    if (isAuthenticated) return [];
+    // Sempre tentar carregar do localStorage primeiro
     const saved = localStorage.getItem("kashfam_expenses");
-    return saved ? JSON.parse(saved) : [];
+    if (saved) return JSON.parse(saved);
+    // Se autenticado, começa vazio para carregar do Firestore depois
+    if (isAuthenticated) return [];
+    return [];
   });
 
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => {
@@ -130,6 +139,8 @@ export default function App() {
   const [activeTab, setActiveTab ] = useState<'dashboard' | 'planilha' | 'transactions' | 'people' | 'insights' | 'chatbot' | 'docs'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSettingsSidebar, setShowSettingsSidebar] = useState(false);
+  const [openSubcategoriesModal, setOpenSubcategoriesModal] = useState(false);
 
   // Computes current active user dynamically based on the session email
   const principalPerson = people.find(p => p.email.toLowerCase() === sessionEmail.toLowerCase()) || people.find(p => p.relationship === 'principal') || people[0] || { name: "Ricardo Gomes" };
@@ -1035,12 +1046,20 @@ export default function App() {
               </nav>
 
               {/* Right Menu: User profile */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
                 <UserProfile
                   displayName={principalPerson.name}
                   email={sessionEmail}
                   onLogout={handleLogout}
                 />
+
+                <button
+                  onClick={() => setShowSettingsSidebar(true)}
+                  className="p-2 rounded-lg font-semibold transition-all text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100"
+                  title="Configurações"
+                >
+                  <SettingsIcon size={20} />
+                </button>
 
                 {/* Mobile Menu Icon */}
                 <button
@@ -1113,6 +1132,8 @@ export default function App() {
                 onBulkDeleteExpenses={handleBulkDeleteExpenses}
                 onBulkUpdateIncomes={handleBulkUpdateIncomes}
                 onBulkDeleteIncomes={handleBulkDeleteIncomes}
+                openSubcategoriesModal={openSubcategoriesModal}
+                setOpenSubcategoriesModal={setOpenSubcategoriesModal}
               />
             )}
 
@@ -1177,6 +1198,27 @@ export default function App() {
               existingSubcategories={subcategories.map((s: SubcategoryItem) => s.name)}
             />
           )}
+
+          {/* Settings Sidebar */}
+          <SettingsSidebar
+            isOpen={showSettingsSidebar}
+            onClose={() => setShowSettingsSidebar(false)}
+            people={people}
+            incomes={incomes}
+            expenses={expenses}
+            subcategories={subcategories}
+            email={sessionEmail}
+            onLogout={handleLogout}
+            onMigrationComplete={() => {
+              setIncomes([]);
+              setExpenses([]);
+            }}
+            onGoToSubcategories={() => {
+              setShowSettingsSidebar(false);
+              setActiveTab('transactions');
+              setOpenSubcategoriesModal(true);
+            }}
+          />
 
           {/* Footer margin credit */}
           <footer className="border-t border-zinc-200 bg-white py-6">

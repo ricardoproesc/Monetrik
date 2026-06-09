@@ -11,6 +11,7 @@ interface SettingsProps {
   expenses: Expense[];
   subcategories: SubcategoryItem[];
   email: string;
+  userId: string;
   onMigrationComplete: () => void;
   onGoToSubcategories?: () => void;
 }
@@ -23,6 +24,7 @@ export default function Settings({
   expenses,
   subcategories,
   email,
+  userId,
   onMigrationComplete,
   onGoToSubcategories,
 }: SettingsProps) {
@@ -213,7 +215,7 @@ export default function Settings({
             // Deletar receitas e despesas antigas
             console.log("DEBUG: Deletando dados antigos...");
             try {
-              const incomesQuery = query(collection(db, "users", email, "incomes"));
+              const incomesQuery = query(collection(db, "users", userId, "incomes"));
               console.log("DEBUG: Query receitas criada");
               const incomesSnapshot = await getDocs(incomesQuery);
               console.log("DEBUG: Encontradas", incomesSnapshot.docs.length, "receitas antigas");
@@ -227,7 +229,7 @@ export default function Settings({
             }
 
             try {
-              const expensesQuery = query(collection(db, "users", email, "expenses"));
+              const expensesQuery = query(collection(db, "users", userId, "expenses"));
               console.log("DEBUG: Query despesas criada");
               const expensesSnapshot = await getDocs(expensesQuery);
               console.log("DEBUG: Encontradas", expensesSnapshot.docs.length, "despesas antigas");
@@ -246,7 +248,7 @@ export default function Settings({
               try {
                 for (const income of result.newIncomes) {
                   console.log("DEBUG: Salvando receita:", income.id);
-                  const incomesRef = collection(db, "users", email, "incomes");
+                  const incomesRef = collection(db, "users", userId, "incomes");
 
                   const savePromise = addDoc(incomesRef, income);
 
@@ -274,7 +276,7 @@ export default function Settings({
               try {
                 for (const expense of result.newExpenses) {
                   console.log("DEBUG: Salvando despesa:", expense.id);
-                  const expensesRef = collection(db, "users", email, "expenses");
+                  const expensesRef = collection(db, "users", userId, "expenses");
 
                   const savePromise = addDoc(expensesRef, expense);
 

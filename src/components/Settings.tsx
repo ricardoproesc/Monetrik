@@ -262,8 +262,9 @@ export default function Settings({
                 }
                 console.log("DEBUG: Receitas salvas");
               } catch (e) {
-                console.error("DEBUG: Erro ao salvar receitas:", e);
-                throw e;
+                console.error("DEBUG: Erro ao salvar receitas no Firebase, usando localStorage:", e);
+                // Fallback para localStorage
+                localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
               }
             }
 
@@ -290,8 +291,9 @@ export default function Settings({
                 }
                 console.log("DEBUG: Despesas salvas");
               } catch (e) {
-                console.error("DEBUG: Erro ao salvar despesas:", e);
-                throw e;
+                console.error("DEBUG: Erro ao salvar despesas no Firebase, usando localStorage:", e);
+                // Fallback para localStorage
+                localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
               }
             }
           } else {

@@ -199,16 +199,10 @@ export default function Settings({
 
         const result = await response.json();
 
-        // Mostrar sucesso imediatamente
-        setSuccessMsg(
-          `✓ Migração concluída!\n${result.incomesImported} receitas importadas\n${result.expensesImported} despesas importadas`
-        );
-        setStep("success");
-        setPassword("");
-        setFile(null);
-
-        // Salvar dados em background (não bloquear a UI)
+        // Salvar dados no Firestore/localStorage
         try {
+          setStep("validating");
+
           // Se Firebase está disponível, usar Firestore
           if (app) {
             const db = getFirestore(app);
@@ -257,14 +251,23 @@ export default function Settings({
               localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
             }
           }
-        } catch (firebaseError) {
-          console.error("Erro ao salvar em Firebase:", firebaseError);
-        }
 
-        // Fechar modal após 2 segundos
-        setTimeout(() => {
-          onMigrationComplete();
-        }, 2000);
+          // Sucesso - mostrar apenas após salvar
+          setSuccessMsg(
+            `✓ Migração concluída!\n${result.incomesImported} receitas importadas\n${result.expensesImported} despesas importadas`
+          );
+          setStep("success");
+          setPassword("");
+          setFile(null);
+
+          setTimeout(() => {
+            onMigrationComplete();
+          }, 2000);
+        } catch (firebaseError) {
+          console.error("Erro ao salvar dados:", firebaseError);
+          setErrorMsg(`Erro ao salvar dados: ${firebaseError instanceof Error ? firebaseError.message : "desconhecido"}`);
+          setStep("error");
+        }
       };
       reader.readAsDataURL(file!);
     } catch (error) {
@@ -572,10 +575,11 @@ export default function Settings({
 
             <button
               onClick={handleValidateFile}
-              disabled={!file}
-              className="w-full mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg"
+              disabled={!file || step === "validating"}
+              className="w-full mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
             >
-              Validar e Prosseguir
+              {step === "validating" && <Loader size={18} className="animate-spin" />}
+              {step === "validating" ? "Processando..." : "Validar e Prosseguir"}
             </button>
           </div>
         )}
@@ -620,11 +624,11 @@ export default function Settings({
               </button>
               <button
                 onClick={handleConfirmMigration}
-                disabled={!password}
+                disabled={!password || step === "validating"}
                 className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
               >
-                {step === "uploading" && <Loader size={18} className="animate-spin" />}
-                Confirmar Migração
+                {step === "validating" && <Loader size={18} className="animate-spin" />}
+                {step === "validating" ? "Salvando..." : "Confirmar Migração"}
               </button>
             </div>
           </div>

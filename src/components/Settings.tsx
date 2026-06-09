@@ -202,9 +202,11 @@ export default function Settings({
         // Salvar dados no Firestore/localStorage
         try {
           setStep("validating");
+          console.log("DEBUG: Iniciando salvamento. app:", !!app);
 
           // Se Firebase está disponível, usar Firestore
           if (app) {
+            console.log("DEBUG: Usando Firebase");
             const db = getFirestore(app);
 
             // Deletar receitas e despesas antigas
@@ -225,30 +227,37 @@ export default function Settings({
 
             // Add new incomes from result
             if (result.newIncomes && Array.isArray(result.newIncomes)) {
+              console.log("DEBUG: Salvando", result.newIncomes.length, "receitas");
               for (const income of result.newIncomes) {
                 await setDoc(
                   doc(collection(db, "users", email, "incomes")),
                   income
                 );
               }
+              console.log("DEBUG: Receitas salvas");
             }
 
             // Add new expenses from result
             if (result.newExpenses && Array.isArray(result.newExpenses)) {
+              console.log("DEBUG: Salvando", result.newExpenses.length, "despesas");
               for (const expense of result.newExpenses) {
                 await setDoc(
                   doc(collection(db, "users", email, "expenses")),
                   expense
                 );
               }
+              console.log("DEBUG: Despesas salvas");
             }
           } else {
             // Fallback: usar localStorage
+            console.log("DEBUG: Firebase não disponível, usando localStorage");
             if (result.newIncomes && Array.isArray(result.newIncomes)) {
               localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
+              console.log("DEBUG: Receitas salvas em localStorage");
             }
             if (result.newExpenses && Array.isArray(result.newExpenses)) {
               localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
+              console.log("DEBUG: Despesas salvas em localStorage");
             }
           }
 

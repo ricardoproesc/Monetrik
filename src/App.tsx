@@ -1208,6 +1208,7 @@ export default function App() {
             expenses={expenses}
             subcategories={subcategories}
             email={sessionEmail}
+            userId={userId || ""}
             onLogout={handleLogout}
             onMigrationComplete={() => {
               setIncomes([]);

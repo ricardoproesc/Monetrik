@@ -10,6 +10,7 @@ interface SettingsSidebarProps {
   expenses: Expense[];
   subcategories: SubcategoryItem[];
   email: string;
+  userId: string;
   isOpen: boolean;
   onClose: () => void;
   onLogout: () => void;
@@ -23,6 +24,7 @@ export default function SettingsSidebar({
   expenses,
   subcategories,
   email,
+  userId,
   isOpen,
   onClose,
   onLogout,
@@ -98,6 +100,7 @@ export default function SettingsSidebar({
                 expenses={expenses}
                 subcategories={subcategories}
                 email={email}
+                userId={userId}
                 onMigrationComplete={() => {
                   onMigrationComplete();
                   setShowMigration(false);

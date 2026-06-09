@@ -378,6 +378,17 @@ export default function Settings({
           </div>
         )}
 
+        {/* Loading State */}
+        {step === "validating" && (
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader size={48} className="text-blue-600 animate-spin" />
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-900">Processando migração...</p>
+              <p className="text-sm text-gray-600 mt-2">Por favor aguarde</p>
+            </div>
+          </div>
+        )}
+
         {/* Modal Informativo */}
         {step === "info" && (
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 space-y-4">

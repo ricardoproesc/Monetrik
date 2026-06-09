@@ -254,11 +254,11 @@ export default function Settings({
 
                   const savePromise = addDoc(incomesRef, income);
 
-                  // Timeout de 10 segundos
+                  // Timeout de 30 segundos
                   await Promise.race([
                     savePromise,
                     new Promise((_, reject) =>
-                      setTimeout(() => reject(new Error("Timeout ao salvar receita")), 10000)
+                      setTimeout(() => reject(new Error("Timeout ao salvar receita")), 30000)
                     )
                   ]);
 

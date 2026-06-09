@@ -245,10 +245,19 @@ export default function Settings({
               try {
                 for (const income of result.newIncomes) {
                   console.log("DEBUG: Salvando receita:", income.id);
-                  await setDoc(
+                  const savePromise = setDoc(
                     doc(collection(db, "users", email, "incomes")),
                     income
                   );
+
+                  // Timeout de 5 segundos
+                  await Promise.race([
+                    savePromise,
+                    new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error("Timeout ao salvar")), 5000)
+                    )
+                  ]);
+
                   console.log("DEBUG: Receita salva com sucesso");
                 }
                 console.log("DEBUG: Receitas salvas");
@@ -264,10 +273,19 @@ export default function Settings({
               try {
                 for (const expense of result.newExpenses) {
                   console.log("DEBUG: Salvando despesa:", expense.id);
-                  await setDoc(
+                  const savePromise = setDoc(
                     doc(collection(db, "users", email, "expenses")),
                     expense
                   );
+
+                  // Timeout de 5 segundos
+                  await Promise.race([
+                    savePromise,
+                    new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error("Timeout ao salvar")), 5000)
+                    )
+                  ]);
+
                   console.log("DEBUG: Despesa salva com sucesso");
                 }
                 console.log("DEBUG: Despesas salvas");
@@ -356,6 +374,17 @@ export default function Settings({
                   Você já tem um template preenchido? Faça upload agora
                 </p>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {step === "validating" && (
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader size={48} className="text-blue-600 animate-spin" />
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-900">Processando migração...</p>
+              <p className="text-sm text-gray-600 mt-2">Por favor aguarde</p>
             </div>
           </div>
         )}

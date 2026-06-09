@@ -204,8 +204,11 @@ export default function Settings({
           setStep("validating");
           console.log("DEBUG: Iniciando salvamento. app:", !!app);
 
-          // Se Firebase está disponível, usar Firestore
-          if (app) {
+          // Desabilitar Firebase e usar sempre localStorage (Firestore tem problemas)
+          const useFirebase = false;
+
+          // Se Firebase está disponível e habilitado, usar Firestore
+          if (app && useFirebase) {
             console.log("DEBUG: Usando Firebase");
             const db = getFirestore(app);
 
@@ -297,8 +300,14 @@ export default function Settings({
               }
             }
           } else {
-            // Fallback: usar localStorage
-            console.log("DEBUG: Firebase não disponível, usando localStorage");
+            // Fallback: usar localStorage (ou Firebase desabilitado)
+            console.log("DEBUG: Usando localStorage (Firebase desabilitado ou indisponível)");
+
+            // Deletar dados antigos e salvar novos
+            localStorage.removeItem("kashfam_incomes");
+            localStorage.removeItem("kashfam_expenses");
+            console.log("DEBUG: Dados antigos deletados do localStorage");
+
             if (result.newIncomes && Array.isArray(result.newIncomes)) {
               localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
               console.log("DEBUG: Receitas salvas em localStorage");

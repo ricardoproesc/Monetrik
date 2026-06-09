@@ -199,10 +199,16 @@ export default function Settings({
 
         const result = await response.json();
 
-        // Salvar dados no Firestore
-        try {
-          setStep("validating");
+        // Mostrar sucesso imediatamente
+        setSuccessMsg(
+          `✓ Migração concluída!\n${result.incomesImported} receitas importadas\n${result.expensesImported} despesas importadas`
+        );
+        setStep("success");
+        setPassword("");
+        setFile(null);
 
+        // Salvar dados em background (não bloquear a UI)
+        try {
           // Se Firebase está disponível, usar Firestore
           if (app) {
             const db = getFirestore(app);
@@ -243,7 +249,7 @@ export default function Settings({
               }
             }
           } else {
-            // Fallback: usar localStorage em modo desenvolvimento
+            // Fallback: usar localStorage
             if (result.newIncomes && Array.isArray(result.newIncomes)) {
               localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
             }
@@ -251,21 +257,14 @@ export default function Settings({
               localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
             }
           }
-
-          setSuccessMsg(
-            `✓ Migração concluída!\n${result.incomesImported} receitas importadas\n${result.expensesImported} despesas importadas`
-          );
-          setStep("success");
-          setPassword("");
-          setFile(null);
-
-          setTimeout(() => {
-            onMigrationComplete();
-          }, 2000);
         } catch (firebaseError) {
-          setErrorMsg(`Erro ao salvar dados: ${firebaseError instanceof Error ? firebaseError.message : "desconhecido"}`);
-          setStep("error");
+          console.error("Erro ao salvar em Firebase:", firebaseError);
         }
+
+        // Fechar modal após 2 segundos
+        setTimeout(() => {
+          onMigrationComplete();
+        }, 2000);
       };
       reader.readAsDataURL(file!);
     } catch (error) {

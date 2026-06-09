@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Person, Income, Expense } from "../types";
 import { Settings as SettingsIcon, Download, Upload, AlertCircle, CheckCircle, Loader, Lock, ExternalLink } from "lucide-react";
 import type { SubcategoryItem } from "./TransactionsManager";
-import { collection, deleteDoc, getDocs, query, setDoc, doc, getFirestore } from "firebase/firestore";
+import { collection, deleteDoc, getDocs, query, setDoc, doc, getFirestore, addDoc } from "firebase/firestore";
 import app from "../lib/firebase";
 
 interface SettingsProps {
@@ -204,11 +204,9 @@ export default function Settings({
           setStep("validating");
           console.log("DEBUG: Iniciando salvamento. app:", !!app);
 
-          // Desabilitar Firebase e usar sempre localStorage (Firestore tem problemas)
-          const useFirebase = false;
-
-          // Se Firebase está disponível e habilitado, usar Firestore
-          if (app && useFirebase) {
+          // Usar Firebase se disponível
+          // Se Firebase está disponível, usar Firestore
+          if (app) {
             console.log("DEBUG: Usando Firebase");
             const db = getFirestore(app);
 
@@ -248,16 +246,15 @@ export default function Settings({
               try {
                 for (const income of result.newIncomes) {
                   console.log("DEBUG: Salvando receita:", income.id);
-                  const savePromise = setDoc(
-                    doc(collection(db, "users", email, "incomes")),
-                    income
-                  );
+                  const incomesRef = collection(db, "users", email, "incomes");
 
-                  // Timeout de 5 segundos
+                  const savePromise = addDoc(incomesRef, income);
+
+                  // Timeout de 10 segundos
                   await Promise.race([
                     savePromise,
                     new Promise((_, reject) =>
-                      setTimeout(() => reject(new Error("Timeout ao salvar")), 5000)
+                      setTimeout(() => reject(new Error("Timeout ao salvar receita")), 10000)
                     )
                   ]);
 
@@ -277,16 +274,15 @@ export default function Settings({
               try {
                 for (const expense of result.newExpenses) {
                   console.log("DEBUG: Salvando despesa:", expense.id);
-                  const savePromise = setDoc(
-                    doc(collection(db, "users", email, "expenses")),
-                    expense
-                  );
+                  const expensesRef = collection(db, "users", email, "expenses");
 
-                  // Timeout de 5 segundos
+                  const savePromise = addDoc(expensesRef, expense);
+
+                  // Timeout de 10 segundos
                   await Promise.race([
                     savePromise,
                     new Promise((_, reject) =>
-                      setTimeout(() => reject(new Error("Timeout ao salvar")), 5000)
+                      setTimeout(() => reject(new Error("Timeout ao salvar despesa")), 10000)
                     )
                   ]);
 

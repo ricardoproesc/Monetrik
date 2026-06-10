@@ -255,16 +255,9 @@ export default function Settings({
                 }
               }
 
-              // Executar batch com timeout de 15 segundos
+              // Executar batch sem timeout para ver o erro real
               console.log("DEBUG: Executando batch...");
-              const batchPromise = batch.commit();
-              await Promise.race([
-                batchPromise,
-                new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error("Timeout ao executar batch")), 15000)
-                )
-              ]);
-
+              await batch.commit();
               console.log("DEBUG: Batch executado com sucesso!");
             } catch (e) {
               console.error("DEBUG: Erro ao executar batch no Firebase, usando localStorage:", e);

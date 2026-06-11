@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (subcategoria && valor && pessoa) {
         newIncomes.push({
-          id: `in-${Date.now()}-${Math.random()}`,
+          id: globalThis.crypto.randomUUID(),
           personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
           category: subcategoria,
           amount: Number(valor),
@@ -64,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (subcategoria && valor && pessoa) {
         newExpenses.push({
-          id: `ex-${Date.now()}-${Math.random()}`,
+          id: globalThis.crypto.randomUUID(),
           personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
           name: subcategoria,
           category: subcategoria,

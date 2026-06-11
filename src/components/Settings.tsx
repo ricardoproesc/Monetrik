@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Person, Income, Expense } from "../types";
 import { Settings as SettingsIcon, Download, Upload, AlertCircle, CheckCircle, Loader, Lock, ExternalLink } from "lucide-react";
 import type { SubcategoryItem } from "./TransactionsManager";
-import { collection, deleteDoc, getDocs, query, setDoc, doc, getFirestore, addDoc, writeBatch } from "firebase/firestore";
-import app from "../lib/firebase";
+import { loadIncomes, deleteIncome, loadExpenses, deleteExpense, batchSaveItems } from "../lib/api";
 
 interface SettingsProps {
   people: Person[];
@@ -201,98 +200,24 @@ export default function Settings({
 
         const result = await response.json();
 
-        // Salvar dados no Firestore/localStorage
+        // Substituir todas as receitas/despesas pelo conteúdo importado (Postgres via API).
         try {
           setStep("validating");
-          console.log("DEBUG: Iniciando salvamento. app:", !!app);
 
-          // Usar Firebase se disponível
-          // Se Firebase está disponível, usar Firestore
-          if (app) {
-            console.log("DEBUG: Usando Firebase");
-            console.log("DEBUG: userId:", userId);
-            console.log("DEBUG: email:", email);
-            const db = getFirestore(app);
+          const [curIncomes, curExpenses] = await Promise.all([
+            loadIncomes(userId).catch(() => [] as Income[]),
+            loadExpenses(userId).catch(() => [] as Expense[]),
+          ]);
+          await Promise.all([
+            ...curIncomes.map((i) => deleteIncome(userId, i.id)),
+            ...curExpenses.map((e) => deleteExpense(userId, e.id)),
+          ]);
 
-            // Usar writeBatch para operações em lote (muito mais rápido)
-            console.log("DEBUG: Iniciando writeBatch...");
-            const batch = writeBatch(db);
-
-            try {
-              // Deletar receitas antigas
-              const incomesQuery = query(collection(db, "users", userId, "incomes"));
-              const incomesSnapshot = await getDocs(incomesQuery);
-              console.log("DEBUG: Encontradas", incomesSnapshot.docs.length, "receitas antigas para deletar");
-
-              for (const docSnapshot of incomesSnapshot.docs) {
-                batch.delete(docSnapshot.ref);
-              }
-
-              // Deletar despesas antigas
-              const expensesQuery = query(collection(db, "users", userId, "expenses"));
-              const expensesSnapshot = await getDocs(expensesQuery);
-              console.log("DEBUG: Encontradas", expensesSnapshot.docs.length, "despesas antigas para deletar");
-
-              for (const docSnapshot of expensesSnapshot.docs) {
-                batch.delete(docSnapshot.ref);
-              }
-
-              // Adicionar novas receitas
-              if (result.newIncomes && Array.isArray(result.newIncomes)) {
-                console.log("DEBUG: Adicionando", result.newIncomes.length, "receitas ao batch");
-                const incomesRef = collection(db, "users", userId, "incomes");
-                for (const income of result.newIncomes) {
-                  batch.set(doc(incomesRef), income);
-                }
-              }
-
-              // Adicionar novas despesas
-              if (result.newExpenses && Array.isArray(result.newExpenses)) {
-                console.log("DEBUG: Adicionando", result.newExpenses.length, "despesas ao batch");
-                const expensesRef = collection(db, "users", userId, "expenses");
-                for (const expense of result.newExpenses) {
-                  batch.set(doc(expensesRef), expense);
-                }
-              }
-
-              // Executar batch com timeout de 15 segundos
-              console.log("DEBUG: Executando batch...");
-              const batchPromise = batch.commit();
-              await Promise.race([
-                batchPromise,
-                new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error("Timeout ao executar batch")), 15000)
-                )
-              ]);
-
-              console.log("DEBUG: Batch executado com sucesso!");
-            } catch (e) {
-              console.error("DEBUG: Erro ao executar batch no Firebase, usando localStorage:", e);
-              // Fallback para localStorage
-              if (result.newIncomes) {
-                localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
-              }
-              if (result.newExpenses) {
-                localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
-              }
-            }
-          } else {
-            // Fallback: usar localStorage (ou Firebase desabilitado)
-            console.log("DEBUG: Usando localStorage (Firebase desabilitado ou indisponível)");
-
-            // Deletar dados antigos e salvar novos
-            localStorage.removeItem("kashfam_incomes");
-            localStorage.removeItem("kashfam_expenses");
-            console.log("DEBUG: Dados antigos deletados do localStorage");
-
-            if (result.newIncomes && Array.isArray(result.newIncomes)) {
-              localStorage.setItem("kashfam_incomes", JSON.stringify(result.newIncomes));
-              console.log("DEBUG: Receitas salvas em localStorage");
-            }
-            if (result.newExpenses && Array.isArray(result.newExpenses)) {
-              localStorage.setItem("kashfam_expenses", JSON.stringify(result.newExpenses));
-              console.log("DEBUG: Despesas salvas em localStorage");
-            }
+          if (Array.isArray(result.newIncomes) && result.newIncomes.length > 0) {
+            await batchSaveItems(userId, "incomes", result.newIncomes);
+          }
+          if (Array.isArray(result.newExpenses) && result.newExpenses.length > 0) {
+            await batchSaveItems(userId, "expenses", result.newExpenses);
           }
 
           // Sucesso - mostrar apenas após salvar

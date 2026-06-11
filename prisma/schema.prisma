@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTENTICAÇÃO E USUÁRIOS
+// ============================================
+
+model usuarios {
+  id_usuario        BigInt   @id @default(autoincrement())
+  email             String   @unique
+  firebase_uid      String?  @unique
+  nome              String?
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  projetos          projetos[]
+  pessoas           pessoas[]
+  preferencias      preferencias?
+
+  @@map("usuarios")
+  @@index([email])
+}
+
+model preferencias {
+  id_preferencia    BigInt   @id @default(autoincrement())
+  id_usuario        BigInt   @unique
+  usuario           usuarios @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  tema              String   @default("light")
+  idioma            String   @default("pt-br")
+  notificacoes      Boolean  @default(true)
+  alert_settings    Json?    // AlertSettings do app (isEnabled, level, limites)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  @@map("preferencias")
+}
+
+// ============================================
+// PESSOAS E PARENTESCOS
+// ============================================
+
+model parentescos {
+  id_parentesco     BigInt   @id @default(autoincrement())
+  descricao         String   @unique
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  projeto_pessoas   projeto_pessoas[]
+
+  @@map("parentescos")
+}
+
+model pessoas {
+  id_pessoa         BigInt   @id @default(autoincrement())
+  id_usuario        BigInt
+  usuario           usuarios @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  nome              String
+  email             String?
+  dt_nascimento     DateTime?
+  sexo              String?  // M, F
+  celular           String?
+  avatar            String?
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  projetos_resp     projetos[]
+  projeto_pessoas   projeto_pessoas[]
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("pessoas")
+  @@unique([id_usuario, email])
+  @@index([id_usuario])
+  @@index([email])
+}
+
+// ============================================
+// PROJETOS
+// ============================================
+
+model projetos {
+  id_projeto        BigInt   @id @default(autoincrement())
+  id_usuario        BigInt
+  usuario           usuarios @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  id_pessoa_resp    BigInt
+  pessoa_resp       pessoas  @relation(fields: [id_pessoa_resp], references: [id_pessoa], onDelete: Restrict)
+  nome              String
+  descricao         String?
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  projeto_pessoas   projeto_pessoas[]
+  proj_subcategorias projetos_subcategorias[]
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("projetos")
+  @@unique([id_usuario, nome])
+  @@index([id_usuario])
+  @@index([id_pessoa_resp])
+}
+
+model projeto_pessoas {
+  id_projeto_pessoa BigInt   @id @default(autoincrement())
+  id_projeto        BigInt
+  projeto           projetos @relation(fields: [id_projeto], references: [id_projeto], onDelete: Cascade)
+  id_pessoa         BigInt
+  pessoa            pessoas  @relation(fields: [id_pessoa], references: [id_pessoa], onDelete: Cascade)
+  id_parentesco     BigInt
+  parentesco        parentescos @relation(fields: [id_parentesco], references: [id_parentesco])
+  ativo             Boolean  @default(true)
+  cor               String   @default("#3B82F6")
+  avatar            String?
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("projeto_pessoas")
+  @@unique([id_projeto, id_pessoa])
+  @@index([id_projeto])
+  @@index([id_pessoa])
+  @@index([id_parentesco])
+}
+
+// ============================================
+// FORMAS DE PAGAMENTO
+// ============================================
+
+model forma_pagamento {
+  id_forma_pagamento BigInt   @id @default(autoincrement())
+  descricao         String   @unique
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("forma_pagamento")
+}
+
+// ============================================
+// CATEGORIAS E SUBCATEGORIAS
+// ============================================
+
+model categorias {
+  id_categoria      BigInt   @id @default(autoincrement())
+  tipo              String   // 'R' (Receita) ou 'D' (Despesa)
+  descricao         String
+  padrao            Boolean  @default(true)
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  subcategorias     subcategorias[]
+
+  @@map("categorias")
+  @@unique([tipo, descricao])
+  @@index([tipo])
+}
+
+model subcategorias {
+  id_subcategoria   BigInt   @id @default(autoincrement())
+  id_categoria      BigInt
+  categoria         categorias @relation(fields: [id_categoria], references: [id_categoria], onDelete: Restrict)
+  descricao         String
+  mensal            Boolean  @default(false)
+  padrao            Boolean  @default(true)
+  ativo             Boolean  @default(true)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  proj_subcategorias projetos_subcategorias[]
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("subcategorias")
+  @@unique([id_categoria, descricao])
+  @@index([id_categoria])
+}
+
+model projetos_subcategorias {
+  id_projetos_subcategorias BigInt   @id @default(autoincrement())
+  id_projeto        BigInt
+  projeto           projetos @relation(fields: [id_projeto], references: [id_projeto], onDelete: Cascade)
+  id_subcategoria   BigInt
+  subcategoria      subcategorias @relation(fields: [id_subcategoria], references: [id_subcategoria], onDelete: Restrict)
+  ativo             Boolean  @default(true)
+  semanal           Boolean  @default(false)
+  mensal            Boolean  @default(false)
+  anual             Boolean  @default(false)
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  // Relacionamentos
+  receitas          receitas[]
+  despesas          despesas[]
+
+  @@map("projetos_subcategorias")
+  @@unique([id_projeto, id_subcategoria])
+  @@index([id_projeto])
+  @@index([id_subcategoria])
+}
+
+// ============================================
+// TRANSAÇÕES (RECEITAS E DESPESAS)
+// ============================================
+
+model receitas {
+  id_receita        BigInt   @id @default(autoincrement())
+  id_projetos_subcategorias BigInt
+  proj_subcat       projetos_subcategorias @relation(fields: [id_projetos_subcategorias], references: [id_projetos_subcategorias], onDelete: Restrict)
+  id_forma_pagamento BigInt
+  forma_pagto       forma_pagamento @relation(fields: [id_forma_pagamento], references: [id_forma_pagamento])
+  id_projeto        BigInt
+  projeto           projetos @relation(fields: [id_projeto], references: [id_projeto], onDelete: Cascade)
+  id_subcategoria   BigInt
+  subcategoria      subcategorias @relation(fields: [id_subcategoria], references: [id_subcategoria])
+  id_projeto_pessoa BigInt
+  projeto_pessoa    projeto_pessoas @relation(fields: [id_projeto_pessoa], references: [id_projeto_pessoa])
+  id_pessoa         BigInt
+  pessoa            pessoas @relation(fields: [id_pessoa], references: [id_pessoa], onDelete: Restrict)
+  valor             Decimal  @db.Decimal(12, 2)
+  dt_lancamento     DateTime
+  observacao        String?
+  is_fixed          Boolean  @default(false)
+  is_recurring      Boolean  @default(false)
+  recorrencia       String   @default("eventual") // mensal, anual, eventual
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  @@map("receitas")
+  @@index([id_projeto])
+  @@index([id_subcategoria])
+  @@index([id_pessoa])
+  @@index([dt_lancamento])
+  @@index([id_projetos_subcategorias])
+}
+
+model despesas {
+  id_despesa        BigInt   @id @default(autoincrement())
+  id_projetos_subcategorias BigInt
+  proj_subcat       projetos_subcategorias @relation(fields: [id_projetos_subcategorias], references: [id_projetos_subcategorias], onDelete: Restrict)
+  id_forma_pagamento BigInt
+  forma_pagto       forma_pagamento @relation(fields: [id_forma_pagamento], references: [id_forma_pagamento])
+  id_projeto        BigInt
+  projeto           projetos @relation(fields: [id_projeto], references: [id_projeto], onDelete: Cascade)
+  id_subcategoria   BigInt
+  subcategoria      subcategorias @relation(fields: [id_subcategoria], references: [id_subcategoria])
+  id_projeto_pessoa BigInt
+  projeto_pessoa    projeto_pessoas @relation(fields: [id_projeto_pessoa], references: [id_projeto_pessoa])
+  id_pessoa         BigInt
+  pessoa            pessoas @relation(fields: [id_pessoa], references: [id_pessoa], onDelete: Restrict)
+  nome              String?  // descrição livre do gasto (Expense.name)
+  valor             Decimal  @db.Decimal(12, 2)
+  dt_lancamento     DateTime
+  observacao        String?
+  is_fixed          Boolean  @default(false)
+  is_recurring      Boolean  @default(false)
+  recorrencia       String   @default("eventual") // mensal, anual, eventual
+  dt_create         DateTime @default(now())
+  dt_update         DateTime @updatedAt
+
+  @@map("despesas")
+  @@index([id_projeto])
+  @@index([id_subcategoria])
+  @@index([id_pessoa])
+  @@index([dt_lancamento])
+  @@index([id_projetos_subcategorias])
+}

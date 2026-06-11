@@ -20,8 +20,9 @@ import {
   loadExpenses, saveExpense, deleteExpense,
   loadSettings, saveSettings as fsaveSettings,
   loadSubcategories, saveSubcategories as fsSaveSubcategories,
-  migrateFromLocalStorage, batchSaveItems,
-} from "./lib/firestore";
+  migrateFromLocalStorage, batchSaveItems, setupProject,
+} from "./lib/api";
+import type { OnboardingData } from "./components/OnboardingSetup";
 import type { SubcategoryItem } from "./components/TransactionsManager";
 import { Person, Income, Expense, AlertSettings } from "./types";
 import PeopleManager from "./components/PeopleManager";
@@ -426,14 +427,13 @@ export default function App() {
     }
   };
 
-  // Helper: chama Firestore só se disponível, sem travar o app em erros
-  const fs = async (fn: () => Promise<void>) => {
-    console.log("[FS] userId:", userId, "| configured:", isFirebaseConfigured);
+  // Helper: chama a API de dados só se disponível, sem travar o app em erros
+  const fs = async (fn: () => Promise<unknown>) => {
     if (!userId || !isFirebaseConfigured) {
-      console.warn("[FS] Skipped — userId ou Firebase não disponível");
+      console.warn("[API] Ignorado — userId ou Firebase não disponível");
       return;
     }
-    fn().catch(e => console.error("[FS] Erro Firestore:", e));
+    fn().catch(e => console.error("[API] Erro:", e));
   };
 
   const handleSaveSubcategories = (newSubs: SubcategoryItem[]) => {
@@ -481,7 +481,7 @@ export default function App() {
 
       if (row.tipo === 'RECEITA') {
         newIncomes.push({
-          id: `in-${Date.now()}-${Math.random()}`,
+          id: "",
           personId,
           category: row.subcategoria,
           amount: Number(row.valor),
@@ -492,7 +492,7 @@ export default function App() {
         });
       } else {
         newExpenses.push({
-          id: `ex-${Date.now()}-${Math.random()}`,
+          id: "",
           personId,
           name: row.descricao,
           category: row.subcategoria,
@@ -506,62 +506,68 @@ export default function App() {
       }
     }
 
-    // Atualizar estados
+    // Atualizar subcategorias localmente
     setSubcategories(updatedSubcategories);
-    setIncomes(prev => [...prev, ...newIncomes]);
-    setExpenses(prev => [...prev, ...newExpenses]);
 
-    // Salvar no Firebase em background
-    if (userId) {
+    if (userId && isFirebaseConfigured) {
       localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(updatedSubcategories));
       fsSaveSubcategories(userId, updatedSubcategories).catch(() => {});
 
-      // Salvar incomes/expenses em lote
+      // Persiste e atualiza o estado com os itens salvos (já com os IDs do banco)
       if (newIncomes.length > 0) {
-        batchSaveItems(userId, 'incomes', newIncomes).catch(() => {});
+        batchSaveItems(userId, 'incomes', newIncomes)
+          .then(saved => setIncomes(prev => [...prev, ...saved]))
+          .catch(e => console.error("[IMPORT incomes]", e));
       }
       if (newExpenses.length > 0) {
-        batchSaveItems(userId, 'expenses', newExpenses).catch(() => {});
+        batchSaveItems(userId, 'expenses', newExpenses)
+          .then(saved => setExpenses(prev => [...prev, ...saved]))
+          .catch(e => console.error("[IMPORT expenses]", e));
       }
+    } else {
+      // Sem backend: gera ids locais apenas para a sessão
+      setIncomes(prev => [...prev, ...newIncomes.map(i => ({ ...i, id: crypto.randomUUID() }))]);
+      setExpenses(prev => [...prev, ...newExpenses.map(e => ({ ...e, id: crypto.randomUUID() }))]);
     }
 
     setShowImportModal(false);
   };
 
-  const handleCompleteOnboarding = (memberData: Omit<import("./types").Person, "id">) => {
-    const newPerson: import("./types").Person = { ...memberData, id: "p1" };
-    setPeople([newPerson]);
-    setIncomes([]);
-    setExpenses([]);
+  const handleCompleteOnboarding = async (data: OnboardingData) => {
+    if (userId && isFirebaseConfigured) {
+      // Cria titular + projeto (nome escolhido) + vincula subcategorias selecionadas.
+      const result = await setupProject(userId, data); // propaga erro -> Onboarding mostra
+      setPeople([result.titular]);
+      setIncomes([]);
+      setExpenses([]);
 
-    if (isFirebaseConfigured && auth?.currentUser) {
-      updateProfile(auth.currentUser, { displayName: memberData.name }).catch(() => {});
-    }
+      // Carrega as subcategorias já vinculadas ao projeto
+      const subs = await loadSubcategories(userId).catch(() => null);
+      if (subs && subs.length > 0) {
+        setSubcategories(subs);
+        localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(subs));
+      }
 
-    if (userId) {
-      // Remove dados default que vieram da migração
-      (async () => {
-        try {
-          const [people, incomes, expenses] = await Promise.all([
-            loadPeople(userId),
-            loadIncomes(userId).catch(() => []),
-            loadExpenses(userId).catch(() => [])
-          ]);
-
-          // Remove pessoas fake (Cônjuge, Filho)
-          await Promise.all(
-            people.filter(p => p.id !== "p1").map(p => deletePerson(userId, p.id))
-          );
-
-          // Remove receitas e despesas default
-          await Promise.all([
-            ...incomes.map(inc => deleteIncome(userId, inc.id)),
-            ...expenses.map(exp => deleteExpense(userId, exp.id))
-          ]);
-
-          await savePerson(userId, newPerson);
-        } catch { /* */ }
-      })();
+      if (auth?.currentUser && result.titular.name) {
+        updateProfile(auth.currentUser, { displayName: result.titular.name }).catch(() => {});
+      }
+    } else {
+      // Fallback sem backend: monta tudo localmente
+      const titular: Person = {
+        id: crypto.randomUUID(),
+        name: (auth?.currentUser?.displayName || sessionEmail.split("@")[0] || "Titular"),
+        avatar: "", gender: "outro", relationship: "principal",
+        email: sessionEmail, whatsapp: "", color: "#3B82F6", active: true,
+      };
+      setPeople([titular]);
+      setIncomes([]);
+      setExpenses([]);
+      setSubcategories(
+        data.subcategories.map((s, i) => ({
+          id: `sub-${i}-${Date.now()}`,
+          type: s.type, category: s.category, name: s.name, active: true,
+        })),
+      );
     }
 
     localStorage.setItem(`kashfam_onboarded_${sessionEmail}`, "true");
@@ -596,9 +602,14 @@ export default function App() {
       alert(`Plano Free permite apenas ${maxPeopleForPlan} pessoa. Upgrade para Premium para adicionar mais.`);
       return;
     }
-    const person: Person = { ...newPerson, id: `p-${Date.now()}` };
-    setPeople(prev => [...prev, person]);
-    fs(() => savePerson(userId!, person));
+    if (userId && isFirebaseConfigured) {
+      savePerson(userId, { ...newPerson, id: "" } as Person)
+        .then(saved => setPeople(prev => [...prev, saved]))
+        .catch(e => console.error("[ADD person]", e));
+    } else {
+      // Sem backend: id temporário apenas na sessão local
+      setPeople(prev => [...prev, { ...newPerson, id: crypto.randomUUID() }]);
+    }
   };
 
   const handleToggleActivePerson = (id: string) => {
@@ -627,9 +638,13 @@ export default function App() {
 
   // ─── Receitas ───────────────────────────────────────────────────────────────
   const handleAddIncome = (newIncome: Omit<Income, 'id'>) => {
-    const income: Income = { ...newIncome, id: `in-${Date.now()}` };
-    setIncomes(prev => [...prev, income]);
-    fs(() => saveIncome(userId!, income));
+    if (userId && isFirebaseConfigured) {
+      saveIncome(userId, { ...newIncome, id: "" } as Income)
+        .then(saved => setIncomes(prev => [...prev, saved]))
+        .catch(e => console.error("[ADD income]", e));
+    } else {
+      setIncomes(prev => [...prev, { ...newIncome, id: crypto.randomUUID() }]);
+    }
   };
 
   const handleDeleteIncome = (id: string) => {
@@ -657,9 +672,13 @@ export default function App() {
 
   // ─── Despesas ───────────────────────────────────────────────────────────────
   const handleAddExpense = (newExpense: Omit<Expense, 'id'>) => {
-    const expense: Expense = { ...newExpense, id: `ex-${Date.now()}` };
-    setExpenses(prev => [...prev, expense]);
-    fs(() => saveExpense(userId!, expense));
+    if (userId && isFirebaseConfigured) {
+      saveExpense(userId, { ...newExpense, id: "" } as Expense)
+        .then(saved => setExpenses(prev => [...prev, saved]))
+        .catch(e => console.error("[ADD expense]", e));
+    } else {
+      setExpenses(prev => [...prev, { ...newExpense, id: crypto.randomUUID() }]);
+    }
   };
 
   const handleDeleteExpense = (id: string) => {

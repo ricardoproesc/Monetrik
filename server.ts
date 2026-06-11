@@ -3,16 +3,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import * as XLSX from "xlsx";
+import { handleApi } from "./lib/server/apiCore";
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+
+// ─── API de dados (Postgres via Prisma) ──────────────────────────────────────
+// CRUD compartilhado com as Vercel Functions (lib/server/apiCore).
+app.all("/api/data/:resource/:id?", async (req, res) => {
+  const segments = [req.params.resource, req.params.id].filter(Boolean) as string[];
+  const result = await handleApi(req.method, segments, req.body, req.headers.authorization);
+  res.status(result.status).json(result.body);
+});
 
 // Lazy-loaded GoogleGenAI client
 let aiClient: GoogleGenAI | null = null;
@@ -893,7 +903,7 @@ app.post("/api/migration/execute", (req, res) => {
 
       if (subcategoria && valor && pessoa) {
         newIncomes.push({
-          id: `in-${Date.now()}-${Math.random()}`,
+          id: globalThis.crypto.randomUUID(),
           personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
           category: subcategoria,
           amount: Number(valor),
@@ -918,7 +928,7 @@ app.post("/api/migration/execute", (req, res) => {
 
       if (subcategoria && valor && pessoa) {
         newExpenses.push({
-          id: `ex-${Date.now()}-${Math.random()}`,
+          id: globalThis.crypto.randomUUID(),
           personId: selectedPeople.find((p: any) => p.name === pessoa)?.id || "",
           name: subcategoria,
           category: subcategoria,

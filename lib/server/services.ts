@@ -114,6 +114,26 @@ export async function deletePerson(id_usuario: bigint, id: string): Promise<void
   if (!big) return;
   const p = await prisma.pessoas.findFirst({ where: { id_pessoa: big, id_usuario } });
   if (!p) return;
+
+  // A pessoa é responsável por algum projeto? (FK onDelete: Restrict)
+  const projetoResp = await prisma.projetos.findFirst({ where: { id_pessoa_resp: big } });
+  if (projetoResp) {
+    throw Object.assign(new Error("Não é possível excluir o titular responsável pelo projeto."), {
+      status: 409,
+    });
+  }
+
+  // A pessoa tem lançamentos (receitas ou despesas)? (FK onDelete: Restrict)
+  const [receita, despesa] = await Promise.all([
+    prisma.receitas.findFirst({ where: { id_pessoa: big } }),
+    prisma.despesas.findFirst({ where: { id_pessoa: big } }),
+  ]);
+  if (receita || despesa) {
+    throw Object.assign(new Error("Esta pessoa possui lançamentos e não pode ser excluída."), {
+      status: 409,
+    });
+  }
+
   await prisma.pessoas.delete({ where: { id_pessoa: big } });
 }
 
@@ -145,6 +165,7 @@ function rowToIncome(r: Prisma.receitasGetPayload<{ include: typeof receitaInclu
     id: r.id_receita.toString(),
     personId: r.id_pessoa.toString(),
     category: r.subcategoria.categoria.descricao,
+    subcategory: r.subcategoria.descricao,
     amount: Number(r.valor),
     date: toDateString(r.dt_lancamento),
     notes: r.observacao || undefined,
@@ -166,7 +187,9 @@ export async function listIncomes(id_usuario: bigint): Promise<IncomeDTO[]> {
 export async function saveIncome(id_usuario: bigint, income: IncomeDTO): Promise<IncomeDTO> {
   const projeto = await requireProjeto(id_usuario);
   const id_pessoa = BigInt(income.personId);
-  const id_subcategoria = await resolveSubcategoriaId("R", income.category);
+  const id_subcategoria = income.subcategory && income.subcategory.trim()
+    ? await resolveSubcategoriaByName(projeto.id_projeto, "R", income.category, income.subcategory)
+    : await resolveSubcategoriaId(projeto.id_projeto, "R", income.category);
   const id_projetos_subcategorias = await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   const id_projeto_pessoa = await ensureProjetoPessoa(projeto.id_projeto, id_pessoa);
   const id_forma_pagamento = await resolveFormaPagamentoId("Pix");
@@ -223,6 +246,7 @@ function rowToExpense(d: Prisma.despesasGetPayload<{ include: typeof despesaIncl
     id: d.id_despesa.toString(),
     name: d.nome || d.subcategoria.descricao,
     category: d.subcategoria.categoria.descricao,
+    subcategory: d.subcategoria.descricao,
     isFixed: d.is_fixed,
     amount: Number(d.valor),
     date: toDateString(d.dt_lancamento),
@@ -246,7 +270,9 @@ export async function listExpenses(id_usuario: bigint): Promise<ExpenseDTO[]> {
 export async function saveExpense(id_usuario: bigint, expense: ExpenseDTO): Promise<ExpenseDTO> {
   const projeto = await requireProjeto(id_usuario);
   const id_pessoa = BigInt(expense.personId);
-  const id_subcategoria = await resolveSubcategoriaId("D", expense.category);
+  const id_subcategoria = expense.subcategory && expense.subcategory.trim()
+    ? await resolveSubcategoriaByName(projeto.id_projeto, "D", expense.category, expense.subcategory)
+    : await resolveSubcategoriaId(projeto.id_projeto, "D", expense.category);
   const id_projetos_subcategorias = await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   const id_projeto_pessoa = await ensureProjetoPessoa(projeto.id_projeto, id_pessoa);
   const id_forma_pagamento = await resolveFormaPagamentoId(expense.paymentMethod);
@@ -333,7 +359,7 @@ export async function saveSettings(id_usuario: bigint, settings: unknown): Promi
  */
 export async function listCatalog(): Promise<SubcategoryDTO[]> {
   const rows = await prisma.subcategorias.findMany({
-    where: { padrao: true },
+    where: { id_projeto: null }, // template global (default)
     include: { categoria: true },
     orderBy: [{ categoria: { tipo: "asc" } }, { descricao: "asc" }],
   });
@@ -373,10 +399,11 @@ export async function listSubcategories(id_usuario: bigint): Promise<Subcategory
  */
 export async function saveSubcategories(id_usuario: bigint, items: SubcategoryDTO[]): Promise<void> {
   const projeto = await getProjetoDefault(id_usuario);
+  if (!projeto) return;
   for (const item of items) {
     const tipo = item.type === "income" ? "R" : "D";
-    const id_subcategoria = await resolveSubcategoriaByName(tipo, item.category, item.name);
-    if (projeto) await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
+    const id_subcategoria = await resolveSubcategoriaByName(projeto.id_projeto, tipo, item.category, item.name);
+    await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   }
 }
 
@@ -384,36 +411,57 @@ export async function saveSubcategories(id_usuario: bigint, items: SubcategoryDT
 // ONBOARDING  (setup inicial do projeto)
 // ============================================================
 
+export interface OnboardingTitular {
+  name: string;
+  email?: string;
+  whatsapp?: string;
+  gender?: "masculino" | "feminino" | "outro";
+  birthDate?: string;
+  avatar?: string;
+  color?: string;
+}
+
 export interface OnboardingSetupData {
   projectName: string;
   projectDescription?: string;
-  titularNome?: string;
+  titular: OnboardingTitular;
   subcategories: { type: "income" | "expense"; category: string; name: string }[];
 }
 
 /**
  * Configura o projeto no primeiro acesso:
- *  1. cria o titular automaticamente (a partir da conta) se ainda não existir;
+ *  1. cria/atualiza o titular com os dados informados no onboarding;
  *  2. cria/atualiza o projeto com o nome escolhido;
- *  3. vincula o titular ao projeto;
+ *  3. vincula o titular ao projeto (parentesco/cor/avatar);
  *  4. vincula as subcategorias selecionadas.
  */
 export async function setupOnboarding(
   id_usuario: bigint,
   data: OnboardingSetupData,
 ): Promise<{ project: { id: string; nome: string }; titular: PersonDTO }> {
-  // 1. Titular
+  const usuario = await prisma.usuarios.findUniqueOrThrow({ where: { id_usuario } });
+  const t = data.titular || ({} as OnboardingTitular);
+
+  // 1. Titular — cria ou atualiza com os dados do onboarding
+  const pessoaData = {
+    nome: (t.name || usuario.nome || usuario.email.split("@")[0] || "Titular").trim(),
+    email: t.email?.trim() || usuario.email,
+    celular: t.whatsapp?.trim() || null,
+    sexo: genderToSexo(t.gender),
+    dt_nascimento: t.birthDate ? parseDate(t.birthDate) : null,
+    avatar: t.avatar || null,
+  };
   let titular = await prisma.pessoas.findFirst({
     where: { id_usuario },
     orderBy: { dt_create: "asc" },
   });
-  if (!titular) {
-    const usuario = await prisma.usuarios.findUniqueOrThrow({ where: { id_usuario } });
-    const nomeTitular =
-      (data.titularNome || usuario.nome || usuario.email.split("@")[0] || "Titular").trim();
-    titular = await prisma.pessoas.create({
-      data: { id_usuario, nome: nomeTitular, email: usuario.email, ativo: true },
-    });
+  titular = titular
+    ? await prisma.pessoas.update({ where: { id_pessoa: titular.id_pessoa }, data: pessoaData })
+    : await prisma.pessoas.create({ data: { id_usuario, ...pessoaData, ativo: true } });
+
+  // Mantém o nome do usuário (conta) em dia
+  if (pessoaData.nome && pessoaData.nome !== usuario.nome) {
+    await prisma.usuarios.update({ where: { id_usuario }, data: { nome: pessoaData.nome } });
   }
 
   // 2. Projeto
@@ -435,13 +483,17 @@ export async function setupOnboarding(
     });
   }
 
-  // 3. Vincula o titular ao projeto
-  await ensureProjetoPessoa(projeto.id_projeto, titular.id_pessoa, { relationship: "principal" });
+  // 3. Vincula o titular ao projeto (parentesco principal, cor e avatar)
+  await ensureProjetoPessoa(projeto.id_projeto, titular.id_pessoa, {
+    relationship: "principal",
+    cor: t.color,
+    avatar: t.avatar ?? null,
+  });
 
   // 4. Vincula as subcategorias escolhidas
   for (const s of data.subcategories) {
     const tipo = s.type === "income" ? "R" : "D";
-    const id_subcategoria = await resolveSubcategoriaByName(tipo, s.category, s.name);
+    const id_subcategoria = await resolveSubcategoriaByName(projeto.id_projeto, tipo, s.category, s.name);
     await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   }
 

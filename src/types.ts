@@ -29,6 +29,7 @@ export interface Income {
   id: string;
   personId: string; // linked to Person
   category: IncomeCategory | string;
+  subcategory?: string; // nome da subcategoria escolhida
   amount: number;
   date: string;
   notes?: string;
@@ -62,6 +63,7 @@ export interface Expense {
   id: string;
   name: string;
   category: ExpenseCategory | string;
+  subcategory?: string; // nome da subcategoria escolhida
   isFixed: boolean; // Fixed or Variable
   amount: number;
   date: string;

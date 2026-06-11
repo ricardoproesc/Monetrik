@@ -53,11 +53,16 @@ async function main() {
       create: { tipo, descricao: categoria },
     });
     for (const descSub of subs) {
-      await prisma.subcategorias.upsert({
-        where: { id_categoria_descricao: { id_categoria: cat.id_categoria, descricao: descSub } },
-        update: {},
-        create: { id_categoria: cat.id_categoria, descricao: descSub },
+      // Subcategorias default = template global (id_projeto NULL). Como o UNIQUE
+      // inclui id_projeto, NULL não casa em upsert; usamos findFirst + create.
+      const exists = await prisma.subcategorias.findFirst({
+        where: { id_projeto: null, id_categoria: cat.id_categoria, descricao: descSub },
       });
+      if (!exists) {
+        await prisma.subcategorias.create({
+          data: { id_categoria: cat.id_categoria, descricao: descSub },
+        });
+      }
     }
   }
   console.log("Seed concluído (lookups garantidos).");

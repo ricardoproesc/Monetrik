@@ -24,6 +24,7 @@ export interface IncomeDTO {
   id: string;
   personId: string;
   category: string;
+  subcategory?: string;
   amount: number;
   date: string;
   notes?: string;
@@ -36,6 +37,7 @@ export interface ExpenseDTO {
   id: string;
   name: string;
   category: string;
+  subcategory?: string;
   isFixed: boolean;
   amount: number;
   date: string;

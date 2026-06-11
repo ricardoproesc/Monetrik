@@ -130,9 +130,20 @@ export default function TransactionsManager({
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>('Pix');
 
   // Subcategories persistent state
-  // Subcategorias vêm do App.tsx (por usuário, salvas no Firestore)
+  // Subcategorias vêm do App.tsx (por usuário/projeto, salvas no Postgres)
   const subcategories = subcategoriesProp.length > 0 ? subcategoriesProp : DEFAULT_SUBCATEGORIES;
   const saveSubcategories = onSaveSubcategories;
+
+  // Categorias derivadas das subcategorias do projeto (não das constantes fixas,
+  // que não correspondem às categorias reais cadastradas no banco).
+  const categoriesOf = (type: "income" | "expense") =>
+    Array.from(
+      new Set(
+        subcategories
+          .filter(s => s.type === type && s.active !== false)
+          .map(s => s.category),
+      ),
+    );
 
   // Subcategories Modal States
   // Use prop if provided, otherwise use local state
@@ -176,8 +187,7 @@ export default function TransactionsManager({
   const getCategoryNature = (catName: string): boolean => {
     const norm = catName.trim().toLowerCase();
     return [
-      'aluguel', 'energia', 'água', 'internet', 'educação',
-      'salário', 'benefícios'
+      'moradia', 'educação', 'saúde', 'salário'
     ].includes(norm);
   };
 
@@ -226,10 +236,12 @@ export default function TransactionsManager({
     }
 
     const categorySelected = incomeCategory;
+    const subcategorySelected = subcategories.find(s => s.id === selectedIncomeSubcatId)?.name;
 
     onAddIncome({
       personId: incomePerson,
       category: categorySelected,
+      subcategory: subcategorySelected,
       amount: parsedAmount,
       date: incomeDate,
       notes: incomeNotes || undefined,
@@ -266,10 +278,12 @@ export default function TransactionsManager({
     const categorySelected = expenseCategory === 'Outros' && customExpenseCategory.trim()
       ? customExpenseCategory.trim()
       : expenseCategory;
+    const subcategorySelected = subcategories.find(s => s.id === selectedExpenseSubcatId)?.name;
 
     onAddExpense({
       name: expenseName,
       category: categorySelected,
+      subcategory: subcategorySelected,
       isFixed: expenseIsFixed,
       amount: parsedAmount,
       date: expenseDate,
@@ -341,6 +355,8 @@ export default function TransactionsManager({
         amount: parseFloat(editAmount) || 0,
         personId: editPersonId,
         category: editCategory,
+        // Preserva a subcategoria já existente (sem seletor no modal de edição)
+        subcategory: (editingItem as Expense).subcategory,
         date: editDate,
         isFixed: editIsFixed,
         isRecurring: editIsRecurring,
@@ -355,6 +371,8 @@ export default function TransactionsManager({
         amount: parseFloat(editAmount) || 0,
         personId: editPersonId,
         category: editCategory,
+        // Preserva a subcategoria já existente (sem seletor no modal de edição)
+        subcategory: (editingItem as Income).subcategory,
         date: editDate,
         isFixed: editIsFixed,
         isRecurring: editIsRecurring,
@@ -484,7 +502,7 @@ export default function TransactionsManager({
                     className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 font-sans text-zinc-700"
                   >
                     <option value="">Selecione uma subcategoria...</option>
-                    {EXPENSE_CATEGORIES.map(cat => {
+                    {categoriesOf('expense').map(cat => {
                       const subsInCat = subcategories.filter(sub => sub.type === 'expense' && sub.category === cat && sub.active !== false);
                       if (subsInCat.length === 0) return null;
                       return (
@@ -539,7 +557,7 @@ export default function TransactionsManager({
                     className={`w-full text-xs border border-zinc-200 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 transition-all ${selectedExpenseSubcatId ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed font-medium' : 'bg-white text-zinc-800'
                       }`}
                   >
-                    {EXPENSE_CATEGORIES.map(cat => (
+                    {categoriesOf('expense').map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -697,7 +715,7 @@ export default function TransactionsManager({
                   className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 text-zinc-700"
                 >
                   <option value="">Selecione uma subcategoria...</option>
-                  {INCOME_CATEGORIES.map(cat => {
+                  {categoriesOf('income').map(cat => {
                     const subsInCat = subcategories.filter(sub => sub.type === 'income' && sub.category === cat && sub.active !== false);
                     if (subsInCat.length === 0) return null;
                     return (
@@ -779,7 +797,7 @@ export default function TransactionsManager({
                       <option value="anual">Anualmente</option>
                       <option value="eventual">Eventualmente</option>
                     </select>
-                    <span className="text-[10px] text-zinc-400 self-center">Automatiza o lançamento desta renda.</span>
+                    <span className="text-[10px] text-zinc-400 self-center">Marca esta renda como recorrente (o lançamento ainda é manual).</span>
                   </div>
                 )}
               </div>
@@ -873,12 +891,12 @@ export default function TransactionsManager({
               >
                 <option value="all">Categoria (Todas)</option>
                 <optgroup label="Despesas">
-                  {EXPENSE_CATEGORIES.map(cat => (
+                  {categoriesOf('expense').map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </optgroup>
                 <optgroup label="Receitas">
-                  {INCOME_CATEGORIES.map(cat => (
+                  {categoriesOf('income').map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </optgroup>
@@ -1126,15 +1144,17 @@ export default function TransactionsManager({
                       onChange={e => setNewSubcatCategory(e.target.value)}
                       className="w-full text-xs border border-zinc-200 bg-white rounded p-1.5 focus:outline-none"
                     >
-                      {newSubcatType === 'income' ? (
-                        INCOME_CATEGORIES.map(cat => (
+                      {(() => {
+                        // Categorias derivadas do projeto; se vazio (projeto sem
+                        // subcategorias), faz fallback para a constante para não travar o cadastro.
+                        const derived = categoriesOf(newSubcatType);
+                        const cats = derived.length > 0
+                          ? derived
+                          : (newSubcatType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES);
+                        return cats.map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
-                        ))
-                      ) : (
-                        EXPENSE_CATEGORIES.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))
-                      )}
+                        ));
+                      })()}
                     </select>
                   </div>
 
@@ -1217,15 +1237,15 @@ export default function TransactionsManager({
                               onChange={e => setEditSubCategory(e.target.value)}
                               className="text-[10px] font-semibold border border-zinc-200 rounded p-1 bg-white text-zinc-700 flex-grow"
                             >
-                              {editSubType === 'income' ? (
-                                INCOME_CATEGORIES.map(cat => (
+                              {(() => {
+                                const derived = categoriesOf(editSubType);
+                                const cats = derived.length > 0
+                                  ? derived
+                                  : (editSubType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES);
+                                return cats.map(cat => (
                                   <option key={cat} value={cat}>{cat}</option>
-                                ))
-                              ) : (
-                                EXPENSE_CATEGORIES.map(cat => (
-                                  <option key={cat} value={cat}>{cat}</option>
-                                ))
-                              )}
+                                ));
+                              })()}
                             </select>
                           </div>
 
@@ -1843,15 +1863,9 @@ export default function TransactionsManager({
                     }}
                     className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-zinc-950 cursor-pointer"
                   >
-                    {editingType === 'expense' ? (
-                      EXPENSE_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))
-                    ) : (
-                      INCOME_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))
-                    )}
+                    {(editingType === 'expense' ? categoriesOf('expense') : categoriesOf('income')).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
                   </select>
                 </div>
 

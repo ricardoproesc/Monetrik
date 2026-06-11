@@ -73,23 +73,15 @@ export default function App() {
   const [authFeedback, setAuthFeedback] = useState("");
   const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'info' | ''>('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
-  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
-    const email = localStorage.getItem("kashfam_email");
-    if (!email) return false;
-    if (localStorage.getItem(`kashfam_onboarded_${email}`) === "true") return true;
-    // Fallback: se já existe um familiar com nome real, pula o onboarding
-    try {
-      const saved = localStorage.getItem("kashfam_people");
-      if (saved) {
-        const people = JSON.parse(saved);
-        if (people.length > 0 && people[0].name !== "Titular da Família") {
-          localStorage.setItem(`kashfam_onboarded_${email}`, "true");
-          return true;
-        }
-      }
-    } catch {}
-    return false;
-  });
+  // Onboarding: a fonte de verdade é o backend (existe titular/projeto?).
+  // O valor inicial só evita flash; é confirmado no onAuthStateChanged.
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(false);
+
+  // Enquanto carregamos os dados do usuário do Postgres, não decidimos
+  // entre onboarding e dashboard (evita mostrar a tela errada).
+  const [bootLoading, setBootLoading] = useState<boolean>(
+    () => localStorage.getItem("kashfam_auth") === "true" && isFirebaseConfigured,
+  );
 
   // Subcategorias — por usuário (uid)
   const [subcategories, setSubcategories] = useState<SubcategoryItem[]>(() => {
@@ -143,6 +135,15 @@ export default function App() {
   const [showSettingsSidebar, setShowSettingsSidebar] = useState(false);
   const [openSubcategoriesModal, setOpenSubcategoriesModal] = useState(false);
 
+  // Toast leve para feedback de erro/sucesso das operações de API
+  const [toast, setToast] = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+  const notifyError = (msg: string) => setToast({ type: 'error', msg });
+
   // Computes current active user dynamically based on the session email
   const principalPerson = people.find(p => p.email.toLowerCase() === sessionEmail.toLowerCase()) || people.find(p => p.relationship === 'principal') || people[0] || { name: "Ricardo Gomes" };
 
@@ -191,32 +192,17 @@ export default function App() {
           const email = user.email || "";
           const uid = user.uid;
           setIsAuthenticated(true);
+          setBootLoading(true);
           setSessionEmail(email);
           setUserId(uid);
           localStorage.setItem("kashfam_auth", "true");
           localStorage.setItem("kashfam_email", email);
           localStorage.setItem("kashfam_uid", uid);
 
-          // Onboarding flag
-          let onboarded = localStorage.getItem(`kashfam_onboarded_${email}`) === "true";
-          if (!onboarded) {
-            try {
-              const saved = localStorage.getItem("kashfam_people");
-              if (saved) {
-                const p = JSON.parse(saved);
-                if (p.length > 0 && p[0].name !== "Titular da Família") {
-                  localStorage.setItem(`kashfam_onboarded_${email}`, "true");
-                  onboarded = true;
-                }
-              }
-            } catch {}
-          }
-          setIsOnboarded(onboarded);
-
-          // Migrar localStorage → Firestore (só na primeira vez)
+          // Migração legada localStorage→Firestore (no-op no Postgres)
           await migrateFromLocalStorage(uid).catch(() => {});
 
-          // Carregar dados do Firestore
+          // Carrega os dados do Postgres — fonte de verdade do onboarding
           const [fsPeople, fsIncomes, fsExpenses, fsSettings] = await Promise.all([
             loadPeople(uid).catch(() => [] as Person[]),
             loadIncomes(uid).catch(() => [] as Income[]),
@@ -224,53 +210,32 @@ export default function App() {
             loadSettings(uid).catch(() => null),
           ]);
 
-          if (fsPeople.length > 0) {
-            const PLACEHOLDERS = ["Titular da Família", "Cônjuge", "Filho(a)"];
-            const validPeople = fsPeople.filter(p => p.id);
-            const realPeople = validPeople.filter(p => !PLACEHOLDERS.includes(p.name));
-            const fakePeople = validPeople.filter(p => PLACEHOLDERS.includes(p.name));
-            const brokenPeople = fsPeople.filter(p => !p.id);
-
-            // Remove placeholders e pessoas quebradas (sem ID) do Firestore
-            if (fakePeople.length > 0 || brokenPeople.length > 0) {
-              fakePeople.forEach(p => deletePerson(uid, p.id).catch(() => {}));
-              brokenPeople.forEach(p => {
-                if (p.id) deletePerson(uid, p.id).catch(() => {});
-              });
-            }
-
-            if (realPeople.length > 0) {
-              setPeople(realPeople);
-              if (!onboarded) {
-                localStorage.setItem(`kashfam_onboarded_${email}`, "true");
-                setIsOnboarded(true);
-              }
-            }
-          }
-          if (fsIncomes.length > 0) setIncomes(fsIncomes);
-          if (fsExpenses.length > 0) setExpenses(fsExpenses);
+          setPeople(fsPeople);
+          setIncomes(fsIncomes);
+          setExpenses(fsExpenses);
           if (fsSettings) setAlertSettings(fsSettings);
 
-          // Carregar subcategorias do usuário
+          // Onboarding concluído somente se já existe titular/projeto no banco.
+          const onboardedNow = fsPeople.length > 0;
+          setIsOnboarded(onboardedNow);
+          if (onboardedNow) localStorage.setItem(`kashfam_onboarded_${email}`, "true");
+          else localStorage.removeItem(`kashfam_onboarded_${email}`);
+
+          // Subcategorias vinculadas ao projeto
           const fsSubcats = await loadSubcategories(uid).catch(() => null);
           if (fsSubcats && fsSubcats.length > 0) {
             setSubcategories(fsSubcats);
             localStorage.setItem(`kashfam_subcategories_${uid}`, JSON.stringify(fsSubcats));
-          } else {
-            // Migrar subcategorias legadas (chave global → chave por UID)
-            const legacy = localStorage.getItem("kashfam_subcategories");
-            if (legacy) {
-              const parsed = JSON.parse(legacy);
-              setSubcategories(parsed);
-              localStorage.setItem(`kashfam_subcategories_${uid}`, legacy);
-            }
           }
+
+          setBootLoading(false);
 
         } else {
           setIsAuthenticated(false);
           setSessionEmail("");
           setUserId(null);
           setIsOnboarded(false);
+          setBootLoading(false);
           localStorage.removeItem("kashfam_auth");
           localStorage.removeItem("kashfam_email");
         }
@@ -427,13 +392,34 @@ export default function App() {
     }
   };
 
-  // Helper: chama a API de dados só se disponível, sem travar o app em erros
-  const fs = async (fn: () => Promise<unknown>) => {
+  // Helper: chama a API de dados só se disponível, sem travar o app em erros.
+  // `onError` opcional permite rollback/feedback visual quando a operação falha.
+  const fs = async (fn: () => Promise<unknown>, onError?: (e: unknown) => void) => {
     if (!userId || !isFirebaseConfigured) {
       console.warn("[API] Ignorado — userId ou Firebase não disponível");
       return;
     }
-    fn().catch(e => console.error("[API] Erro:", e));
+    fn().catch(e => {
+      console.error("[API] Erro:", e);
+      onError?.(e);
+    });
+  };
+
+  // Extrai a mensagem de erro lançada pela camada api.ts.
+  // O api.ts lança Error com texto "API <m> /<path> <status>: <body>", onde
+  // <body> costuma ser o JSON { error: "..." } retornado pelo backend.
+  const errMessage = (e: unknown, fallback: string) => {
+    if (!(e instanceof Error) || !e.message) return fallback;
+    const match = e.message.match(/\{.*\}$/s);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (parsed?.error) return String(parsed.error);
+      } catch {
+        /* ignora — usa fallback abaixo */
+      }
+    }
+    return fallback;
   };
 
   const handleSaveSubcategories = (newSubs: SubcategoryItem[]) => {
@@ -552,12 +538,19 @@ export default function App() {
         updateProfile(auth.currentUser, { displayName: result.titular.name }).catch(() => {});
       }
     } else {
-      // Fallback sem backend: monta tudo localmente
+      // Fallback sem backend: monta tudo localmente a partir dos dados do titular
+      const t = data.titular;
       const titular: Person = {
         id: crypto.randomUUID(),
-        name: (auth?.currentUser?.displayName || sessionEmail.split("@")[0] || "Titular"),
-        avatar: "", gender: "outro", relationship: "principal",
-        email: sessionEmail, whatsapp: "", color: "#3B82F6", active: true,
+        name: t.name || sessionEmail.split("@")[0] || "Titular",
+        avatar: t.avatar || "",
+        gender: t.gender || "outro",
+        relationship: "principal",
+        email: t.email || sessionEmail,
+        whatsapp: t.whatsapp || "",
+        birthDate: t.birthDate,
+        color: t.color || "#3B82F6",
+        active: true,
       };
       setPeople([titular]);
       setIncomes([]);
@@ -605,7 +598,10 @@ export default function App() {
     if (userId && isFirebaseConfigured) {
       savePerson(userId, { ...newPerson, id: "" } as Person)
         .then(saved => setPeople(prev => [...prev, saved]))
-        .catch(e => console.error("[ADD person]", e));
+        .catch(e => {
+          console.error("[ADD person]", e);
+          notifyError(errMessage(e, "Não foi possível salvar o integrante."));
+        });
     } else {
       // Sem backend: id temporário apenas na sessão local
       setPeople(prev => [...prev, { ...newPerson, id: crypto.randomUUID() }]);
@@ -622,18 +618,30 @@ export default function App() {
   };
 
   const handleDeletePerson = (id: string) => {
-    console.log("[DELETE] Deletando pessoa:", id);
+    // Otimista-com-rollback: guarda a pessoa e sua posição original
+    const index = people.findIndex(p => p.id === id);
+    const removed = people[index];
+    if (!removed) return;
+
     setPeople(prev => prev.filter(p => p.id !== id));
-    fs(async () => {
-      console.log("[DELETE] Chamando Firestore...");
-      await deletePerson(userId!, id);
-      console.log("[DELETE] Sucesso!");
-    });
+    fs(
+      () => deletePerson(userId!, id),
+      (e) => {
+        // Falha (ex.: 409 titular): re-insere na posição original e avisa
+        setPeople(prev => {
+          if (prev.some(p => p.id === removed.id)) return prev;
+          const restored = [...prev];
+          restored.splice(Math.min(index, restored.length), 0, removed);
+          return restored;
+        });
+        notifyError(errMessage(e, "Não foi possível excluir o integrante."));
+      },
+    );
   };
 
   const handleUpdatePerson = (updated: Person) => {
     setPeople(prev => prev.map(p => p.id === updated.id ? updated : p));
-    fs(() => savePerson(userId!, updated));
+    fs(() => savePerson(userId!, updated), e => notifyError(errMessage(e, "Não foi possível atualizar o integrante.")));
   };
 
   // ─── Receitas ───────────────────────────────────────────────────────────────
@@ -641,7 +649,10 @@ export default function App() {
     if (userId && isFirebaseConfigured) {
       saveIncome(userId, { ...newIncome, id: "" } as Income)
         .then(saved => setIncomes(prev => [...prev, saved]))
-        .catch(e => console.error("[ADD income]", e));
+        .catch(e => {
+          console.error("[ADD income]", e);
+          notifyError(errMessage(e, "Não foi possível salvar a receita."));
+        });
     } else {
       setIncomes(prev => [...prev, { ...newIncome, id: crypto.randomUUID() }]);
     }
@@ -649,12 +660,12 @@ export default function App() {
 
   const handleDeleteIncome = (id: string) => {
     setIncomes(prev => prev.filter(inc => inc.id !== id));
-    fs(() => deleteIncome(userId!, id));
+    fs(() => deleteIncome(userId!, id), e => notifyError(errMessage(e, "Não foi possível excluir a receita.")));
   };
 
   const handleUpdateIncome = (updated: Income) => {
     setIncomes(prev => prev.map(inc => inc.id === updated.id ? updated : inc));
-    fs(() => saveIncome(userId!, updated));
+    fs(() => saveIncome(userId!, updated), e => notifyError(errMessage(e, "Não foi possível atualizar a receita.")));
   };
 
   const handleBulkUpdateIncomes = (updatedList: Income[]) => {
@@ -675,7 +686,10 @@ export default function App() {
     if (userId && isFirebaseConfigured) {
       saveExpense(userId, { ...newExpense, id: "" } as Expense)
         .then(saved => setExpenses(prev => [...prev, saved]))
-        .catch(e => console.error("[ADD expense]", e));
+        .catch(e => {
+          console.error("[ADD expense]", e);
+          notifyError(errMessage(e, "Não foi possível salvar a despesa."));
+        });
     } else {
       setExpenses(prev => [...prev, { ...newExpense, id: crypto.randomUUID() }]);
     }
@@ -683,12 +697,12 @@ export default function App() {
 
   const handleDeleteExpense = (id: string) => {
     setExpenses(prev => prev.filter(exp => exp.id !== id));
-    fs(() => deleteExpense(userId!, id));
+    fs(() => deleteExpense(userId!, id), e => notifyError(errMessage(e, "Não foi possível excluir a despesa.")));
   };
 
   const handleUpdateExpense = (updated: Expense) => {
     setExpenses(prev => prev.map(exp => exp.id === updated.id ? updated : exp));
-    fs(() => saveExpense(userId!, updated));
+    fs(() => saveExpense(userId!, updated), e => notifyError(errMessage(e, "Não foi possível atualizar a despesa.")));
   };
 
   const handleBulkUpdateExpenses = (updatedList: Expense[]) => {
@@ -713,9 +727,48 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 selection:bg-zinc-950 selection:text-white antialiased">
-      
+
+      {/* Toast de feedback leve (erro/sucesso) das operações de API */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[200] animate-fade-in">
+          <div
+            role="alert"
+            className={`flex items-start gap-2.5 max-w-sm px-4 py-3 rounded-xl border shadow-lg text-xs font-medium ${
+              toast.type === 'error'
+                ? 'bg-red-50 text-red-800 border-red-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}
+          >
+            {toast.type === 'error'
+              ? <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-500" />
+              : <Check className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />}
+            <span className="leading-snug">{toast.msg}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-1 shrink-0 text-current/60 hover:text-current transition-colors"
+              aria-label="Fechar"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Carregando dados do usuário (evita flash entre onboarding/dashboard) */}
+      {isAuthenticated && bootLoading ? (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-zinc-50">
+          <div className="h-12 w-12 bg-emerald-500 text-zinc-950 rounded-2xl flex items-center justify-center shadow-sm">
+            <PiggyBank className="h-6 w-6" />
+          </div>
+          <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <Loader className="h-4 w-4 animate-spin" /> Carregando seus dados…
+          </div>
+        </div>
+      ) : null}
+
       {/* Onboarding — primeiro acesso após login */}
-      {isAuthenticated && !isOnboarded ? (
+      {isAuthenticated && !bootLoading && !isOnboarded ? (
         <OnboardingSetup
           sessionEmail={sessionEmail}
           displayName={auth?.currentUser?.displayName || undefined}

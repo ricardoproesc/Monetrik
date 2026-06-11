@@ -347,7 +347,6 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
       {/* Grid of existing family members */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {people.filter(p => p.id).map(person => {
-          console.log("[PERSON]", person.id, "{ name:", person.name, ", relationship:", person.relationship, ", active:", person.active, ", showDelete:", person.relationship !== 'principal' || !person.name, "}");
           return (
           <div
             key={person.id}
@@ -385,8 +384,17 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                {/* Delete option - prevent deleting index-0 main owner directly without warning */}
-                {(person.relationship !== 'principal' || !person.name) && (
+                {/* Delete option - o titular (principal) não pode ser excluído */}
+                {person.relationship === 'principal' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="p-1 px-1.5 text-zinc-300 rounded cursor-not-allowed"
+                    title="O titular não pode ser excluído."
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
                   <button
                     onClick={() => setPersonToDeleteId(person.id)}
                     className="p-1 px-1.5 text-zinc-400 hover:text-red-500 rounded hover:bg-red-50 transition-colors"

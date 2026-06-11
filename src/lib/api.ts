@@ -99,7 +99,15 @@ export async function loadCatalog(_uid: string): Promise<SubcategoryItem[]> {
 export interface OnboardingPayload {
   projectName: string;
   projectDescription?: string;
-  titularNome?: string;
+  titular: {
+    name: string;
+    email?: string;
+    whatsapp?: string;
+    gender?: "masculino" | "feminino" | "outro";
+    birthDate?: string;
+    avatar?: string;
+    color?: string;
+  };
   subcategories: { type: "income" | "expense"; category: string; name: string }[];
 }
 

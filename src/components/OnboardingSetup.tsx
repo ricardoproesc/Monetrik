@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   PiggyBank, Check, Plus, ArrowRight, ArrowLeft, Sparkles, Loader,
-  TrendingUp, TrendingDown, Folder, X,
+  TrendingUp, TrendingDown, Folder, User, Phone, Mail, Calendar,
 } from "lucide-react";
 import { loadCatalog } from "../lib/api";
 import { DEFAULT_SUBCATEGORIES, type SubcategoryItem } from "./TransactionsManager";
@@ -9,6 +9,15 @@ import { DEFAULT_SUBCATEGORIES, type SubcategoryItem } from "./TransactionsManag
 export interface OnboardingData {
   projectName: string;
   projectDescription?: string;
+  titular: {
+    name: string;
+    email?: string;
+    whatsapp?: string;
+    gender?: "masculino" | "feminino" | "outro";
+    birthDate?: string;
+    avatar?: string;
+    color?: string;
+  };
   subcategories: { type: "income" | "expense"; category: string; name: string }[];
 }
 
@@ -19,31 +28,131 @@ interface OnboardingSetupProps {
 }
 
 const PROJECT_SUGGESTIONS = ["Família", "Casa", "Pessoal", "Meu Orçamento"];
+const AVATARS = ["👨‍💼", "👩‍💼", "👨‍💻", "👩‍💻", "👨", "👩", "🧑", "👴", "👵", "🧔", "👱", "👱‍♀️"];
+const COLORS = ["#3b82f6", "#10b981", "#6366f1", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
 
 const keyOf = (s: { type: string; category: string; name: string }) =>
   `${s.type}::${s.category}::${s.name}`;
 
-type Phase = 1 | 2 | 3;
+// Máscara de telefone BR: (XX) XXXXX-XXXX (celular) ou (XX) XXXX-XXXX (fixo)
+function formatPhone(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length === 0) return "";
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+type Phase = 1 | 2 | 3 | 4;
+
+// ─────────────────────── Seção de categoria ───────────────────────
+interface CategorySectionProps {
+  category: string;
+  items: SubcategoryItem[];
+  selected: Set<string>;
+  onCount: number;
+  allOn: boolean;
+  onToggleCategory: () => void;
+  onToggleSub: (s: SubcategoryItem) => void;
+  onAdd: (name: string) => void;
+}
+
+const CategorySection: React.FC<CategorySectionProps> = ({
+  category, items, selected, onCount, allOn, onToggleCategory, onToggleSub, onAdd,
+}) => {
+  const [adding, setAdding] = useState(false);
+  const [value, setValue] = useState("");
+
+  const submit = () => {
+    if (value.trim()) { onAdd(value); setValue(""); }
+    setAdding(false);
+  };
+
+  return (
+    <div className="border rounded-2xl p-3.5 bg-white" style={{ borderColor: "#e7e7ea" }}>
+      <div className="flex items-center justify-between mb-2.5">
+        <button onClick={onToggleCategory} className="flex items-center gap-2 group">
+          <span
+            className={`h-4.5 w-4.5 rounded-md border flex items-center justify-center transition-all ${
+              allOn ? "bg-zinc-900 border-zinc-900" : onCount > 0 ? "bg-zinc-300 border-zinc-300" : "border-zinc-300"
+            }`}
+          >
+            {(allOn || onCount > 0) && <Check className="h-3 w-3 text-white" />}
+          </span>
+          <span className="text-sm font-semibold text-zinc-900">{category}</span>
+        </button>
+        <span className="text-[11px] text-zinc-400 font-medium">{onCount}/{items.length}</span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {items.map(s => {
+          const on = selected.has(keyOf(s));
+          return (
+            <button
+              key={keyOf(s)}
+              onClick={() => onToggleSub(s)}
+              className={`text-xs px-3 py-1.5 rounded-full border inline-flex items-center gap-1 transition-all ${
+                on
+                  ? "bg-emerald-500 text-white border-emerald-500"
+                  : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400"
+              }`}
+            >
+              {on && <Check className="h-3 w-3" />} {s.name}
+            </button>
+          );
+        })}
+
+        {adding ? (
+          <input
+            autoFocus
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(); if (e.key === "Escape") { setAdding(false); setValue(""); } }}
+            onBlur={submit}
+            placeholder="Nova subcategoria"
+            className="text-xs px-2.5 py-1.5 rounded-full border border-zinc-300 focus:outline-none focus:border-zinc-500 w-36"
+          />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="text-xs px-3 py-1.5 rounded-full border border-dashed border-zinc-300 text-zinc-500 hover:border-zinc-500 hover:text-zinc-700 inline-flex items-center gap-1 transition-all"
+          >
+            <Plus className="h-3 w-3" /> Nova
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function OnboardingSetup({ sessionEmail, displayName, onComplete }: OnboardingSetupProps) {
   const [phase, setPhase] = useState<Phase>(1);
 
-  // Fase 1
+  // Fase 1 — Titular
+  const [name, setName] = useState(displayName || "");
+  const [email, setEmail] = useState(sessionEmail || "");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [gender, setGender] = useState<"masculino" | "feminino" | "outro">("masculino");
+  const [birthDate, setBirthDate] = useState("");
+  const [avatar, setAvatar] = useState(AVATARS[0]);
+  const [color, setColor] = useState(COLORS[0]);
+
+  // Fase 2 — Projeto
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
 
-  // Fase 2
+  // Fase 3 — Categorias
   const [catalog, setCatalog] = useState<SubcategoryItem[]>([]);
   const [customSubs, setCustomSubs] = useState<SubcategoryItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [activeType, setActiveType] = useState<"expense" | "income">("expense");
 
-  // Fase 3 / submit
+  // Submit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Carrega o catálogo de subcategorias default (todas pré-selecionadas)
   useEffect(() => {
     (async () => {
       try {
@@ -62,7 +171,6 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
 
   const allSubs = useMemo(() => [...catalog, ...customSubs], [catalog, customSubs]);
 
-  // Agrupa subcategorias por categoria, para o tipo ativo
   const grouped = useMemo<{ category: string; items: SubcategoryItem[] }[]>(() => {
     const map = new Map<string, SubcategoryItem[]>();
     for (const s of allSubs) {
@@ -96,12 +204,11 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
     });
   };
 
-  const addSubcategory = (category: string, name: string) => {
-    const clean = name.trim();
+  const addSubcategory = (category: string, subName: string) => {
+    const clean = subName.trim();
     if (!clean) return;
     const item: SubcategoryItem = { id: `new-${Date.now()}`, type: activeType, category, name: clean, active: true };
     if (allSubs.some(s => s.type === item.type && s.category === category && s.name.toLowerCase() === clean.toLowerCase())) {
-      // já existe — só garante selecionada
       setSelected(prev => new Set(prev).add(keyOf(item)));
       return;
     }
@@ -119,9 +226,17 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
       await onComplete({
         projectName: projectName.trim(),
         projectDescription: projectDescription.trim() || undefined,
+        titular: {
+          name: name.trim(),
+          email: email.trim() || undefined,
+          whatsapp: whatsapp.trim() || undefined,
+          gender,
+          birthDate: birthDate || undefined,
+          avatar,
+          color,
+        },
         subcategories,
       });
-      // Em caso de sucesso, o App troca de tela; nada mais a fazer aqui.
     } catch (e: any) {
       setError(e?.message || "Não foi possível concluir. Tente novamente.");
       setSubmitting(false);
@@ -130,13 +245,14 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
 
   // ─────────────────────────── Stepper ───────────────────────────
   const steps = [
-    { n: 1, label: "Projeto" },
-    { n: 2, label: "Categorias" },
-    { n: 3, label: "Pronto" },
+    { n: 1, label: "Você" },
+    { n: 2, label: "Projeto" },
+    { n: 3, label: "Categorias" },
+    { n: 4, label: "Pronto" },
   ];
 
   const Stepper = () => (
-    <div className="flex items-center justify-center gap-2 mb-8">
+    <div className="flex items-center justify-center gap-1.5 mb-8">
       {steps.map((s, i) => {
         const done = phase > s.n;
         const current = phase === s.n;
@@ -157,7 +273,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
               </span>
             </div>
             {i < steps.length - 1 && (
-              <div className={`h-0.5 w-6 sm:w-10 rounded-full transition-all ${phase > s.n ? "bg-emerald-400" : "bg-zinc-200"}`} />
+              <div className={`h-0.5 w-4 sm:w-7 rounded-full transition-all ${phase > s.n ? "bg-emerald-400" : "bg-zinc-200"}`} />
             )}
           </React.Fragment>
         );
@@ -165,11 +281,16 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
     </div>
   );
 
+  const genderOptions: { v: "masculino" | "feminino" | "outro"; label: string }[] = [
+    { v: "masculino", label: "Masculino" },
+    { v: "feminino", label: "Feminino" },
+    { v: "outro", label: "Outro" },
+  ];
+
   // ─────────────────────────── Render ───────────────────────────
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
-        {/* Brand */}
         <div className="text-center mb-6">
           <div className="h-12 w-12 bg-emerald-500 text-zinc-950 rounded-2xl flex items-center justify-center mx-auto shadow-sm mb-2">
             <PiggyBank className="h-6 w-6" />
@@ -180,11 +301,146 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
         <div className="bg-white border border-zinc-200 rounded-3xl p-6 md:p-8 shadow-sm">
           <Stepper />
 
-          {/* ─── FASE 1: Projeto ─── */}
+          {/* ─── FASE 1: Titular ─── */}
           {phase === 1 && (
             <div className="animate-fade-in space-y-6">
               <div className="text-center space-y-1.5">
-                <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">Vamos criar seu projeto</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">Vamos te conhecer</h2>
+                <p className="text-sm text-zinc-500 max-w-md mx-auto">
+                  Você é o titular do projeto. Esses dados criam seu perfil de familiar — dá pra editar depois.
+                </p>
+              </div>
+
+              {/* Avatar preview + seleção */}
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className="h-20 w-20 rounded-2xl flex items-center justify-center text-4xl shadow-sm"
+                  style={{ backgroundColor: color + "22", border: `2px solid ${color}` }}
+                >
+                  {avatar}
+                </div>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {AVATARS.map(a => (
+                    <button
+                      key={a}
+                      onClick={() => setAvatar(a)}
+                      className={`h-9 w-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                        avatar === a ? "bg-zinc-900 ring-2 ring-zinc-900/20 scale-105" : "bg-zinc-50 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {a}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  {COLORS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setColor(c)}
+                      className={`h-6 w-6 rounded-full transition-all ${color === c ? "ring-2 ring-offset-2 ring-zinc-400 scale-110" : ""}`}
+                      style={{ backgroundColor: c }}
+                      aria-label={`Cor ${c}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Campos */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-700">Nome completo</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-4 w-4 text-zinc-400" />
+                    <input
+                      autoFocus
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      placeholder="Ex: Ricardo Gomes Matos"
+                      className="w-full text-sm border border-zinc-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-700">E-mail</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-zinc-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="voce@email.com"
+                        className="w-full text-sm border border-zinc-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-700">Celular / WhatsApp</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-3 h-4 w-4 text-zinc-400" />
+                      <input
+                        value={whatsapp}
+                        onChange={e => setWhatsapp(formatPhone(e.target.value))}
+                        placeholder="(11) 99999-9999"
+                        inputMode="numeric"
+                        maxLength={16}
+                        className="w-full text-sm border border-zinc-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-700">Sexo</label>
+                    <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
+                      {genderOptions.map(g => (
+                        <button
+                          key={g.v}
+                          onClick={() => setGender(g.v)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                            gender === g.v ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"
+                          }`}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-700">
+                      Nascimento <span className="text-zinc-400 font-normal">(opcional)</span>
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-3 h-4 w-4 text-zinc-400" />
+                      <input
+                        type="date"
+                        value={birthDate}
+                        onChange={e => setBirthDate(e.target.value)}
+                        className="w-full text-sm border border-zinc-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={!name.trim()}
+                onClick={() => setPhase(2)}
+                className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                Continuar <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* ─── FASE 2: Projeto ─── */}
+          {phase === 2 && (
+            <div className="animate-fade-in space-y-6">
+              <div className="text-center space-y-1.5">
+                <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">Crie seu projeto</h2>
                 <p className="text-sm text-zinc-500 max-w-md mx-auto">
                   Um projeto agrupa as finanças que você acompanha em conjunto — sua família, sua casa ou só você.
                 </p>
@@ -197,7 +453,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                   type="text"
                   value={projectName}
                   onChange={e => setProjectName(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && projectName.trim()) setPhase(2); }}
+                  onKeyDown={e => { if (e.key === "Enter" && projectName.trim()) setPhase(3); }}
                   placeholder="Ex: Família Silva"
                   className="w-full text-sm border border-zinc-200 bg-white rounded-xl px-4 py-3 focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
                 />
@@ -232,19 +488,28 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                 />
               </div>
 
-              <button
-                type="button"
-                disabled={!projectName.trim()}
-                onClick={() => setPhase(2)}
-                className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-              >
-                Continuar <ArrowRight className="h-4 w-4" />
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPhase(1)}
+                  className="px-4 py-3 border border-zinc-200 hover:border-zinc-400 text-zinc-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={!projectName.trim()}
+                  onClick={() => setPhase(3)}
+                  className="flex-1 py-3 bg-zinc-950 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                  Continuar <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
 
-          {/* ─── FASE 2: Categorias & Subcategorias ─── */}
-          {phase === 2 && (
+          {/* ─── FASE 3: Categorias & Subcategorias ─── */}
+          {phase === 3 && (
             <div className="animate-fade-in space-y-5">
               <div className="text-center space-y-1.5">
                 <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">O que você quer acompanhar?</h2>
@@ -253,7 +518,6 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                 </p>
               </div>
 
-              {/* Tabs Receitas / Despesas */}
               <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
                 <button
                   onClick={() => setActiveType("expense")}
@@ -275,8 +539,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                 </button>
               </div>
 
-              {/* Lista de categorias */}
-              <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-1 -mr-1">
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1 -mr-1">
                 {loadingCatalog ? (
                   <div className="flex items-center justify-center py-12 text-zinc-400 gap-2 text-sm">
                     <Loader className="h-4 w-4 animate-spin" /> Carregando categorias…
@@ -298,7 +561,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                         allOn={allOn}
                         onToggleCategory={() => toggleCategory(items)}
                         onToggleSub={toggleSub}
-                        onAdd={name => addSubcategory(category, name)}
+                        onAdd={subName => addSubcategory(category, subName)}
                       />
                     );
                   })
@@ -312,14 +575,14 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setPhase(1)}
+                  onClick={() => setPhase(2)}
                   className="px-4 py-3 border border-zinc-200 hover:border-zinc-400 text-zinc-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5"
                 >
                   <ArrowLeft className="h-4 w-4" /> Voltar
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPhase(3)}
+                  onClick={() => setPhase(4)}
                   className="flex-1 py-3 bg-zinc-950 hover:bg-zinc-800 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
                 >
                   Revisar <ArrowRight className="h-4 w-4" />
@@ -328,15 +591,15 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
             </div>
           )}
 
-          {/* ─── FASE 3: Conclusão ─── */}
-          {phase === 3 && (
+          {/* ─── FASE 4: Conclusão ─── */}
+          {phase === 4 && (
             <div className="animate-fade-in space-y-6 text-center">
               <div className="h-16 w-16 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto">
                 <Sparkles className="h-8 w-8" />
               </div>
               <div className="space-y-1.5">
                 <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
-                  Tudo pronto{displayName ? `, ${displayName.split(" ")[0]}` : ""}!
+                  Tudo pronto{name ? `, ${name.split(" ")[0]}` : ""}!
                 </h2>
                 <p className="text-sm text-zinc-500 max-w-md mx-auto">
                   Confira o resumo abaixo. Você pode editar tudo depois dentro do Monetrik.
@@ -344,6 +607,18 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
               </div>
 
               <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-5 space-y-3 text-left">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-9 w-9 rounded-lg flex items-center justify-center text-lg shrink-0"
+                    style={{ backgroundColor: color + "22", border: `1.5px solid ${color}` }}
+                  >
+                    {avatar}
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-zinc-400 font-medium uppercase tracking-wide">Titular</p>
+                    <p className="text-sm font-semibold text-zinc-900">{name.trim() || "—"}</p>
+                  </div>
+                </div>
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 bg-white border border-zinc-200 rounded-lg flex items-center justify-center text-zinc-700">
                     <Folder className="h-4.5 w-4.5" />
@@ -379,7 +654,7 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => setPhase(2)}
+                  onClick={() => setPhase(3)}
                   className="px-4 py-3 border border-zinc-200 hover:border-zinc-400 disabled:opacity-50 text-zinc-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5"
                 >
                   <ArrowLeft className="h-4 w-4" /> Voltar
@@ -399,88 +674,6 @@ export default function OnboardingSetup({ sessionEmail, displayName, onComplete 
         </div>
 
         <p className="text-center text-[11px] text-zinc-400 mt-4">Conectado como {sessionEmail}</p>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────── Seção de categoria ───────────────────────
-interface CategorySectionProps {
-  category: string;
-  items: SubcategoryItem[];
-  selected: Set<string>;
-  onCount: number;
-  allOn: boolean;
-  onToggleCategory: () => void;
-  onToggleSub: (s: SubcategoryItem) => void;
-  onAdd: (name: string) => void;
-}
-
-const CategorySection: React.FC<CategorySectionProps> = ({
-  category, items, selected, onCount, allOn, onToggleCategory, onToggleSub, onAdd,
-}) => {
-  const [adding, setAdding] = useState(false);
-  const [value, setValue] = useState("");
-
-  const submit = () => {
-    if (value.trim()) { onAdd(value); setValue(""); }
-    setAdding(false);
-  };
-
-  return (
-    <div className="border border-zinc-150 rounded-2xl p-3.5 bg-white" style={{ borderColor: "#e7e7ea" }}>
-      <div className="flex items-center justify-between mb-2.5">
-        <button onClick={onToggleCategory} className="flex items-center gap-2 group">
-          <span
-            className={`h-4.5 w-4.5 rounded-md border flex items-center justify-center transition-all ${
-              allOn ? "bg-zinc-900 border-zinc-900" : onCount > 0 ? "bg-zinc-300 border-zinc-300" : "border-zinc-300"
-            }`}
-          >
-            {(allOn || onCount > 0) && <Check className="h-3 w-3 text-white" />}
-          </span>
-          <span className="text-sm font-semibold text-zinc-900">{category}</span>
-        </button>
-        <span className="text-[11px] text-zinc-400 font-medium">{onCount}/{items.length}</span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {items.map(s => {
-          const on = selected.has(keyOf(s));
-          return (
-            <button
-              key={keyOf(s)}
-              onClick={() => onToggleSub(s)}
-              className={`text-xs px-3 py-1.5 rounded-full border inline-flex items-center gap-1 transition-all ${
-                on
-                  ? "bg-emerald-500 text-white border-emerald-500"
-                  : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400"
-              }`}
-            >
-              {on && <Check className="h-3 w-3" />} {s.name}
-            </button>
-          );
-        })}
-
-        {adding ? (
-          <span className="inline-flex items-center gap-1">
-            <input
-              autoFocus
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") submit(); if (e.key === "Escape") { setAdding(false); setValue(""); } }}
-              onBlur={submit}
-              placeholder="Nova subcategoria"
-              className="text-xs px-2.5 py-1.5 rounded-full border border-zinc-300 focus:outline-none focus:border-zinc-500 w-36"
-            />
-          </span>
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-full border border-dashed border-zinc-300 text-zinc-500 hover:border-zinc-500 hover:text-zinc-700 inline-flex items-center gap-1 transition-all"
-          >
-            <Plus className="h-3 w-3" /> Nova
-          </button>
-        )}
       </div>
     </div>
   );

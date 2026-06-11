@@ -10,6 +10,7 @@
  * com bigint; a conversão de/para string (formato do frontend) acontece na
  * borda (services/apiCore).
  */
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import type { AuthUser } from "./auth";
 
@@ -39,15 +40,31 @@ export async function getOrCreateUsuario(authUser: AuthUser): Promise<Ctx> {
   });
 
   if (!usuario) {
-    usuario = await prisma.usuarios.create({
-      data: {
-        email: authUser.email,
-        firebase_uid: authUser.firebaseUid,
-        nome: authUser.nome ?? null,
-        preferencias: { create: {} },
-      },
-    });
-  } else if (!usuario.firebase_uid) {
+    try {
+      usuario = await prisma.usuarios.create({
+        data: {
+          email: authUser.email,
+          firebase_uid: authUser.firebaseUid,
+          nome: authUser.nome ?? null,
+          preferencias: { create: {} },
+        },
+      });
+    } catch (err) {
+      // Race no primeiro login: vários requests em paralelo tentam criar o
+      // mesmo usuário. Em violação de UNIQUE (email/firebase_uid), re-busca o
+      // que outro request já criou em vez de propagar o erro.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        usuario = await prisma.usuarios.findFirst({
+          where: { OR: [{ firebase_uid: authUser.firebaseUid }, { email: authUser.email }] },
+        });
+        if (!usuario) throw err;
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (usuario && !usuario.firebase_uid) {
     // Usuário existia (ex.: por e-mail) mas sem uid vinculado — vincula agora.
     usuario = await prisma.usuarios.update({
       where: { id_usuario: usuario.id_usuario },
@@ -91,11 +108,13 @@ export async function ensureProjetoDefault(
 }
 
 /**
- * Resolve (ou cria) uma subcategoria específica por (tipo, categoria, nome),
- * criando a categoria-pai se necessário. Usado no onboarding e na gestão de
- * subcategorias, onde temos o nome exato da subcategoria.
+ * Resolve (ou cria) a subcategoria por (projeto, tipo, categoria, nome).
+ * Se já existe uma subcategoria DEFAULT (id_projeto NULL) com esse nome, ela é
+ * reaproveitada (catálogo compartilhado). Caso contrário, cria/atualiza uma
+ * subcategoria CUSTOM isolada no projeto. Usado no onboarding e na gestão.
  */
 export async function resolveSubcategoriaByName(
+  id_projeto: bigint,
   tipo: "R" | "D",
   category: string,
   name: string,
@@ -105,10 +124,24 @@ export async function resolveSubcategoriaByName(
     update: {},
     create: { tipo, descricao: category, padrao: false },
   });
+
+  // (1) Reaproveita uma subcategoria default (template global) com esse nome.
+  const padrao = await prisma.subcategorias.findFirst({
+    where: { id_projeto: null, id_categoria: categoria.id_categoria, descricao: name },
+  });
+  if (padrao) return padrao.id_subcategoria;
+
+  // (2) Cria/atualiza a subcategoria custom isolada no projeto.
   const sub = await prisma.subcategorias.upsert({
-    where: { id_categoria_descricao: { id_categoria: categoria.id_categoria, descricao: name } },
+    where: {
+      id_projeto_id_categoria_descricao: {
+        id_projeto,
+        id_categoria: categoria.id_categoria,
+        descricao: name,
+      },
+    },
     update: { ativo: true },
-    create: { id_categoria: categoria.id_categoria, descricao: name, padrao: false },
+    create: { id_projeto, id_categoria: categoria.id_categoria, descricao: name, padrao: false },
   });
   return sub.id_subcategoria;
 }
@@ -169,34 +202,31 @@ export async function ensureProjetoPessoa(
  * e uma subcategoria "Geral" sob ela; (3) cria categoria + subcategoria.
  * Retorna o id_subcategoria.
  */
-export async function resolveSubcategoriaId(tipo: "R" | "D", category: string): Promise<bigint> {
+export async function resolveSubcategoriaId(
+  id_projeto: bigint,
+  tipo: "R" | "D",
+  category: string,
+): Promise<bigint> {
   const descricao = (category || "Outros").trim() || "Outros";
 
-  // (1) bate como subcategoria existente (respeitando o tipo da categoria-pai)
+  // (1) `category` bate com uma subcategoria existente (default ou do projeto).
   const subDireta = await prisma.subcategorias.findFirst({
-    where: { descricao, categoria: { tipo } },
+    where: {
+      descricao,
+      categoria: { tipo },
+      OR: [{ id_projeto: null }, { id_projeto }],
+    },
   });
   if (subDireta) return subDireta.id_subcategoria;
 
-  // (2) bate como categoria -> usa/cria subcategoria com a mesma descrição
-  let categoria = await prisma.categorias.findFirst({ where: { tipo, descricao } });
-
-  // (3) sem categoria correspondente -> usa "Outros"/"Outras" ou cria
-  if (!categoria) {
-    categoria =
-      (await prisma.categorias.findFirst({ where: { tipo, descricao: "Outros" } })) ??
-      (await prisma.categorias.findFirst({ where: { tipo, descricao: "Outras" } })) ??
-      (await prisma.categorias.create({ data: { tipo, descricao, padrao: false } }));
-  }
-
-  const sub = await prisma.subcategorias.upsert({
-    where: {
-      id_categoria_descricao: { id_categoria: categoria.id_categoria, descricao },
-    },
-    update: {},
-    create: { id_categoria: categoria.id_categoria, descricao, padrao: false },
-  });
-  return sub.id_subcategoria;
+  // (2) Trata `category` como categoria-pai e resolve uma subcategoria homônima
+  // (reaproveita default ou cria custom no projeto).
+  const categoriaAlvo =
+    (await prisma.categorias.findFirst({ where: { tipo, descricao } })) ??
+    (await prisma.categorias.findFirst({ where: { tipo, descricao: "Outros" } })) ??
+    (await prisma.categorias.findFirst({ where: { tipo, descricao: "Outras" } }));
+  const nomeCategoria = categoriaAlvo?.descricao ?? descricao;
+  return resolveSubcategoriaByName(id_projeto, tipo, nomeCategoria, descricao);
 }
 
 /** Garante o vínculo projeto<->subcategoria. Retorna id_projetos_subcategorias. */

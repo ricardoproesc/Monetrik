@@ -104,6 +104,7 @@ model projetos {
   // Relacionamentos
   projeto_pessoas   projeto_pessoas[]
   proj_subcategorias projetos_subcategorias[]
+  subcategorias     subcategorias[]
   receitas          receitas[]
   despesas          despesas[]
 
@@ -181,6 +182,10 @@ model subcategorias {
   id_subcategoria   BigInt   @id @default(autoincrement())
   id_categoria      BigInt
   categoria         categorias @relation(fields: [id_categoria], references: [id_categoria], onDelete: Restrict)
+  // id_projeto NULL = subcategoria default (catálogo/template global, compartilhado).
+  // id_projeto preenchido = subcategoria custom, isolada por projeto.
+  id_projeto        BigInt?
+  projeto           projetos? @relation(fields: [id_projeto], references: [id_projeto], onDelete: Cascade)
   descricao         String
   mensal            Boolean  @default(false)
   padrao            Boolean  @default(true)
@@ -194,8 +199,9 @@ model subcategorias {
   despesas          despesas[]
 
   @@map("subcategorias")
-  @@unique([id_categoria, descricao])
+  @@unique([id_projeto, id_categoria, descricao])
   @@index([id_categoria])
+  @@index([id_projeto])
 }
 
 model projetos_subcategorias {

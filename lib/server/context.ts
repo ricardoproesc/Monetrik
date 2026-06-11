@@ -11,8 +11,8 @@
  * borda (services/apiCore).
  */
 import { Prisma } from "@prisma/client";
-import { prisma } from "./prisma";
-import type { AuthUser } from "./auth";
+import { prisma } from "./prisma.js";
+import type { AuthUser } from "./auth.js";
 
 const PROJETO_DEFAULT_NOME = "Família";
 

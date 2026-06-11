@@ -9,10 +9,10 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import * as XLSX from "xlsx";
-import { handleApi } from "./lib/server/apiCore";
-import { buildMigrationTemplate } from "./lib/server/migrationTemplate";
-import { parseFlexibleDate } from "./lib/server/dateUtil";
-import { sendVerificationEmail } from "./lib/server/authEmail";
+import { handleApi } from "./lib/server/apiCore.js";
+import { buildMigrationTemplate } from "./lib/server/migrationTemplate.js";
+import { parseFlexibleDate } from "./lib/server/dateUtil.js";
+import { sendVerificationEmail } from "./lib/server/authEmail.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;

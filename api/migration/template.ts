@@ -3,7 +3,7 @@
  * Gera o modelo XLSX estático de migração (Instruções + Lançamentos).
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { buildMigrationTemplate } from "../../lib/server/migrationTemplate";
+import { buildMigrationTemplate } from "../../lib/server/migrationTemplate.js";
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {

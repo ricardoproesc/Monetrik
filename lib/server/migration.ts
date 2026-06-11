@@ -11,15 +11,15 @@
  * da planilha define o `categorias.fixa` da categoria criada/atualizada.
  */
 import * as XLSX from "xlsx";
-import { prisma } from "./prisma";
-import { parseFlexibleDate } from "./dateUtil";
+import { prisma } from "./prisma.js";
+import { parseFlexibleDate } from "./dateUtil.js";
 import {
   ensureProjetoDefault,
   ensureProjetoPessoa,
   resolveSubcategoriaByName,
   ensureProjetoSubcategoria,
-} from "./context";
-import { saveIncome, saveExpense } from "./services";
+} from "./context.js";
+import { saveIncome, saveExpense } from "./services.js";
 
 export interface ParsedRow {
   linha: number; // nº da linha na planilha (1-based, com cabeçalho = 1)

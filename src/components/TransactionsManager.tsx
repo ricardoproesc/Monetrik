@@ -145,6 +145,22 @@ export default function TransactionsManager({
       ),
     );
 
+  // Agrupa as subcategorias de um tipo por categoria-pai (para o modal de
+  // configuração), ordenando categorias e nomes alfabeticamente.
+  const groupSubcatsByCategory = (type: "income" | "expense") => {
+    const map = new Map<string, SubcategoryItem[]>();
+    for (const s of subcategories.filter(sub => sub.type === type)) {
+      if (!map.has(s.category)) map.set(s.category, []);
+      map.get(s.category)!.push(s);
+    }
+    return Array.from(map.entries())
+      .map(([category, subs]) => ({
+        category,
+        subs: [...subs].sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => a.category.localeCompare(b.category));
+  };
+
   // Subcategories Modal States
   // Use prop if provided, otherwise use local state
   const [localShowSubcatMgmt, setLocalShowSubcatMgmt] = useState(false);
@@ -183,13 +199,9 @@ export default function TransactionsManager({
     setNewSubcatCategory(type === 'income' ? 'Salário' : 'Mercado');
   };
 
-  // Helper to determine if a category is fixed (Fixo vs Variável)
-  const getCategoryNature = (catName: string): boolean => {
-    const norm = catName.trim().toLowerCase();
-    return [
-      'moradia', 'educação', 'saúde', 'salário'
-    ].includes(norm);
-  };
+  // NB: a "fixidez" (is_fixed) agora é derivada da categoria pelo backend.
+  // O frontend não tenta mais adivinhar isso por heurística — o indicador de
+  // "Gasto Fixo/Variável" é apenas informativo e o valor real vem do servidor.
 
   const [selectedExpenseSubcatId, setSelectedExpenseSubcatId] = useState("");
   const [selectedIncomeSubcatId, setSelectedIncomeSubcatId] = useState("");
@@ -493,7 +505,6 @@ export default function TransactionsManager({
                         if (selectedSub) {
                           setExpenseName(selectedSub.name);
                           setExpenseCategory(selectedSub.category as any);
-                          setExpenseIsFixed(getCategoryNature(selectedSub.category));
                         }
                       } else {
                         setExpenseName("");
@@ -552,7 +563,6 @@ export default function TransactionsManager({
                     onChange={e => {
                       const newCat = e.target.value as any;
                       setExpenseCategory(newCat);
-                      setExpenseIsFixed(getCategoryNature(newCat));
                     }}
                     className={`w-full text-xs border border-zinc-200 rounded-lg p-2.5 focus:outline-none focus:border-zinc-400 transition-all ${selectedExpenseSubcatId ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed font-medium' : 'bg-white text-zinc-800'
                       }`}
@@ -708,7 +718,6 @@ export default function TransactionsManager({
                       const selectedSub = subcategories.find(s => s.id === subId);
                       if (selectedSub) {
                         setIncomeCategory(selectedSub.category as any);
-                        setIncomeIsFixed(getCategoryNature(selectedSub.category));
                       }
                     }
                   }}
@@ -1214,8 +1223,15 @@ export default function TransactionsManager({
                   </button>
                 </div>
 
-                <div className="divide-y divide-zinc-100 max-h-[30vh] overflow-y-auto pr-1">
-                  {subcategories.filter(sub => sub.type === subcatModalTab).map(sub => {
+                <div className="space-y-4 max-h-[42vh] overflow-y-auto pr-1">
+                  {groupSubcatsByCategory(subcatModalTab).map(({ category, subs }) => (
+                    <div key={category}>
+                      <div className="flex items-center justify-between px-1 mb-1.5">
+                        <span className="text-[11px] font-bold text-zinc-700 uppercase tracking-wide">{category}</span>
+                        <span className="text-[10px] text-zinc-400 font-medium">{subs.length}</span>
+                      </div>
+                      <div className="divide-y divide-zinc-100 border border-zinc-100 rounded-xl px-2">
+                  {subs.map(sub => {
                     if (editingSubId === sub.id) {
                       return (
                         <div key={sub.id} className="py-2.5 flex flex-col gap-2 bg-zinc-50 border border-zinc-200 p-3 rounded-xl my-1 animate-fade-in">
@@ -1288,7 +1304,6 @@ export default function TransactionsManager({
                                       ...e,
                                       name: trimmed,
                                       category: editSubCategory,
-                                      isFixed: getCategoryNature(editSubCategory)
                                     }));
                                   if (toUpdate.length > 0) {
                                     onBulkUpdateExpenses(toUpdate);
@@ -1300,7 +1315,6 @@ export default function TransactionsManager({
                                       ...i,
                                       notes: trimmed,
                                       category: editSubCategory,
-                                      isFixed: getCategoryNature(editSubCategory)
                                     }));
                                   if (toUpdate.length > 0) {
                                     onBulkUpdateIncomes(toUpdate);
@@ -1328,11 +1342,6 @@ export default function TransactionsManager({
                     return (
                       <div key={sub.id} className={`py-2 flex items-center justify-between text-xs hover:bg-zinc-50/50 px-1 rounded transition-all ${sub.active === false ? "opacity-55" : ""}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0 uppercase tracking-wider border ${sub.type === 'income' ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'bg-rose-50 text-rose-800 border-rose-100'
-                            }`}>
-                            {sub.type === 'income' ? 'Receita' : 'Despesa'}
-                          </span>
-                          <span className="text-zinc-400 text-[10px] shrink-0">({sub.category})</span>
                           <span className="text-zinc-800 font-semibold truncate flex items-center gap-1.5">
                             {sub.name}
                             {DEFAULT_SUBCATEGORIES.some(def => def.id === sub.id) && (
@@ -1399,10 +1408,13 @@ export default function TransactionsManager({
                       </div>
                     );
                   })}
+                      </div>
+                    </div>
+                  ))}
 
-                  {subcategories.length === 0 && (
+                  {groupSubcatsByCategory(subcatModalTab).length === 0 && (
                     <div className="p-8 text-center text-xs text-zinc-400 italic">
-                      Nenhuma subcategoria cadastrada no momento. Adicione novas acima para facilitar os lançamentos.
+                      Nenhuma subcategoria nesta aba ainda. Adicione novas acima para facilitar os lançamentos.
                     </div>
                   )}
                 </div>
@@ -1592,7 +1604,6 @@ export default function TransactionsManager({
                                     ...e,
                                     name: selectedTarget.name,
                                     category: selectedTarget.category,
-                                    isFixed: getCategoryNature(selectedTarget.category)
                                   }));
                                 if (toUpdate.length > 0) {
                                   onBulkUpdateExpenses(toUpdate);
@@ -1604,7 +1615,6 @@ export default function TransactionsManager({
                                     ...i,
                                     notes: selectedTarget.name,
                                     category: selectedTarget.category,
-                                    isFixed: getCategoryNature(selectedTarget.category)
                                   }));
                                 if (toUpdate.length > 0) {
                                   onBulkUpdateIncomes(toUpdate);
@@ -1859,7 +1869,6 @@ export default function TransactionsManager({
                     onChange={e => {
                       const newCat = e.target.value;
                       setEditCategory(newCat);
-                      setEditIsFixed(getCategoryNature(newCat));
                     }}
                     className="w-full text-xs border border-zinc-200 bg-white rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-zinc-950 cursor-pointer"
                   >

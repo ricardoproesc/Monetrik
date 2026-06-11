@@ -16,6 +16,7 @@ model usuarios {
   email             String   @unique
   firebase_uid      String?  @unique
   nome              String?
+  plano             String   @default("basico") // 'basico' | 'premium'
   dt_create         DateTime @default(now())
   dt_update         DateTime @updatedAt
 
@@ -165,6 +166,7 @@ model categorias {
   id_categoria      BigInt   @id @default(autoincrement())
   tipo              String   // 'R' (Receita) ou 'D' (Despesa)
   descricao         String
+  fixa              Boolean  @default(false) // gasto/renda fixo deriva daqui
   padrao            Boolean  @default(true)
   ativo             Boolean  @default(true)
   dt_create         DateTime @default(now())

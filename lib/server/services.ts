@@ -72,7 +72,31 @@ export async function listPeople(id_usuario: bigint): Promise<PersonDTO[]> {
   return rows.map(rowToPerson);
 }
 
-export async function savePerson(id_usuario: bigint, person: PersonDTO): Promise<PersonDTO> {
+export async function savePerson(
+  id_usuario: bigint,
+  person: PersonDTO,
+  plano?: string,
+): Promise<PersonDTO> {
+  const id = toBig(person.id);
+  // Update se o id existe e pertence ao usuário; caso contrário, cria (autoincrement).
+  const existing = id
+    ? await prisma.pessoas.findFirst({ where: { id_pessoa: id, id_usuario } })
+    : null;
+
+  // Limite de plano: ao CRIAR uma pessoa nova, o plano Básico permite só 1.
+  // Editar pessoa existente nunca bloqueia.
+  if (!existing && plano === "basico") {
+    const count = await prisma.pessoas.count({ where: { id_usuario } });
+    if (count >= 1) {
+      throw Object.assign(
+        new Error(
+          "O plano Básico permite apenas 1 familiar. Faça upgrade para o Premium para adicionar mais.",
+        ),
+        { status: 403 },
+      );
+    }
+  }
+
   const data = {
     id_usuario,
     nome: person.name,
@@ -84,11 +108,6 @@ export async function savePerson(id_usuario: bigint, person: PersonDTO): Promise
     ativo: person.active,
   };
 
-  const id = toBig(person.id);
-  // Update se o id existe e pertence ao usuário; caso contrário, cria (autoincrement).
-  const existing = id
-    ? await prisma.pessoas.findFirst({ where: { id_pessoa: id, id_usuario } })
-    : null;
   const pessoa = existing
     ? await prisma.pessoas.update({ where: { id_pessoa: existing.id_pessoa }, data })
     : await prisma.pessoas.create({ data });
@@ -140,6 +159,18 @@ export async function deletePerson(id_usuario: bigint, id: string): Promise<void
 // ============================================================
 // Helpers de transação (comum a receitas e despesas)
 // ============================================================
+
+/**
+ * `is_fixed` da transação é DERIVADO de `categorias.fixa` (categoria-pai da
+ * subcategoria). Centraliza a busca para receitas e despesas.
+ */
+async function isFixedFromSubcategoria(id_subcategoria: bigint): Promise<boolean> {
+  const sub = await prisma.subcategorias.findUnique({
+    where: { id_subcategoria },
+    include: { categoria: true },
+  });
+  return sub?.categoria.fixa ?? false;
+}
 
 async function requireProjeto(id_usuario: bigint) {
   const projeto = await getProjetoDefault(id_usuario);
@@ -193,6 +224,7 @@ export async function saveIncome(id_usuario: bigint, income: IncomeDTO): Promise
   const id_projetos_subcategorias = await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   const id_projeto_pessoa = await ensureProjetoPessoa(projeto.id_projeto, id_pessoa);
   const id_forma_pagamento = await resolveFormaPagamentoId("Pix");
+  const is_fixed = await isFixedFromSubcategoria(id_subcategoria);
 
   const data = {
     id_projeto: projeto.id_projeto,
@@ -204,7 +236,7 @@ export async function saveIncome(id_usuario: bigint, income: IncomeDTO): Promise
     valor: new Prisma.Decimal(income.amount),
     dt_lancamento: parseDate(income.date),
     observacao: income.notes || null,
-    is_fixed: income.isFixed,
+    is_fixed,
     is_recurring: income.isRecurring,
     recorrencia: income.recurrence,
   };
@@ -276,6 +308,7 @@ export async function saveExpense(id_usuario: bigint, expense: ExpenseDTO): Prom
   const id_projetos_subcategorias = await ensureProjetoSubcategoria(projeto.id_projeto, id_subcategoria);
   const id_projeto_pessoa = await ensureProjetoPessoa(projeto.id_projeto, id_pessoa);
   const id_forma_pagamento = await resolveFormaPagamentoId(expense.paymentMethod);
+  const is_fixed = await isFixedFromSubcategoria(id_subcategoria);
 
   const data = {
     id_projeto: projeto.id_projeto,
@@ -288,7 +321,7 @@ export async function saveExpense(id_usuario: bigint, expense: ExpenseDTO): Prom
     valor: new Prisma.Decimal(expense.amount),
     dt_lancamento: parseDate(expense.date),
     observacao: expense.notes || null,
-    is_fixed: expense.isFixed,
+    is_fixed,
     is_recurring: expense.isRecurring,
     recorrencia: expense.recurrence,
   };

@@ -6,6 +6,10 @@ coverage/
 .DS_Store
 *.log
 
+# Credenciais — NUNCA versionar
+firebase-service-account.json
+email-preview.html
+
 # Variáveis de ambiente — NUNCA versionar
 .env
 .env.local

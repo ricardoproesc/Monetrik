@@ -13,18 +13,19 @@ const PARENTESCOS = ["Titular", "Cônjuge", "Filho(a)", "Pai/Mãe", "Outro"];
 const FORMAS_PAGAMENTO = ["Dinheiro", "Débito", "Crédito", "Pix", "Transferência", "Boleto"];
 
 // Catálogo default. `tipo`: 'R' receita, 'D' despesa. ("Outras" existe nos dois.)
-const CATALOGO: { tipo: "R" | "D"; categoria: string; subs: string[] }[] = [
-  { tipo: "R", categoria: "Salário", subs: ["Salário Principal", "Salário Extra"] },
-  { tipo: "R", categoria: "Freelance", subs: ["Projetos", "Consultoria"] },
-  { tipo: "R", categoria: "Investimentos", subs: ["Dividendos", "Juros", "Aluguel"] },
-  { tipo: "R", categoria: "Outras", subs: ["Presente", "Reembolso"] },
-  { tipo: "D", categoria: "Alimentação", subs: ["Supermercado", "Restaurante", "Delivery"] },
-  { tipo: "D", categoria: "Transporte", subs: ["Combustível", "Uber/Taxi", "Transporte Público", "Estacionamento"] },
-  { tipo: "D", categoria: "Moradia", subs: ["Aluguel", "Condomínio", "Luz", "Água", "Internet", "Telefone"] },
-  { tipo: "D", categoria: "Saúde", subs: ["Farmácia", "Médico", "Dentista", "Plano Saúde"] },
-  { tipo: "D", categoria: "Educação", subs: ["Mensalidade", "Cursos", "Livros"] },
-  { tipo: "D", categoria: "Lazer", subs: ["Cinema", "Streaming", "Esportes", "Viagem"] },
-  { tipo: "D", categoria: "Outras", subs: ["Roupas", "Beleza", "Diversos"] },
+// `fixa`: a categoria representa um gasto/renda tipicamente fixo (mensal recorrente).
+const CATALOGO: { tipo: "R" | "D"; categoria: string; fixa: boolean; subs: string[] }[] = [
+  { tipo: "R", categoria: "Salário", fixa: true, subs: ["Salário Principal", "Salário Extra"] },
+  { tipo: "R", categoria: "Freelance", fixa: false, subs: ["Projetos", "Consultoria"] },
+  { tipo: "R", categoria: "Investimentos", fixa: false, subs: ["Dividendos", "Juros", "Aluguel"] },
+  { tipo: "R", categoria: "Outras", fixa: false, subs: ["Presente", "Reembolso"] },
+  { tipo: "D", categoria: "Alimentação", fixa: false, subs: ["Supermercado", "Restaurante", "Delivery"] },
+  { tipo: "D", categoria: "Transporte", fixa: false, subs: ["Combustível", "Uber/Taxi", "Transporte Público", "Estacionamento"] },
+  { tipo: "D", categoria: "Moradia", fixa: true, subs: ["Aluguel", "Condomínio", "Luz", "Água", "Internet", "Telefone"] },
+  { tipo: "D", categoria: "Saúde", fixa: true, subs: ["Farmácia", "Médico", "Dentista", "Plano Saúde"] },
+  { tipo: "D", categoria: "Educação", fixa: true, subs: ["Mensalidade", "Cursos", "Livros"] },
+  { tipo: "D", categoria: "Lazer", fixa: false, subs: ["Cinema", "Streaming", "Esportes", "Viagem"] },
+  { tipo: "D", categoria: "Outras", fixa: false, subs: ["Roupas", "Beleza", "Diversos"] },
 ];
 
 async function main() {
@@ -46,11 +47,11 @@ async function main() {
   for (const descricao of FORMAS_PAGAMENTO) {
     await prisma.forma_pagamento.upsert({ where: { descricao }, update: {}, create: { descricao } });
   }
-  for (const { tipo, categoria, subs } of CATALOGO) {
+  for (const { tipo, categoria, fixa, subs } of CATALOGO) {
     const cat = await prisma.categorias.upsert({
       where: { tipo_descricao: { tipo, descricao: categoria } },
-      update: {},
-      create: { tipo, descricao: categoria },
+      update: { fixa },
+      create: { tipo, descricao: categoria, fixa },
     });
     for (const descSub of subs) {
       // Subcategorias default = template global (id_projeto NULL). Como o UNIQUE

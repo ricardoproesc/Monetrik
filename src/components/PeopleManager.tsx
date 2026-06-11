@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { Person } from "../types";
-import { Plus, Trash2, Mail, Phone, Calendar, User, Check, AlertCircle, Pencil, X } from "lucide-react";
+import { Plus, Trash2, Mail, Phone, Calendar, User, Check, AlertCircle, Pencil, X, Crown, AlertTriangle } from "lucide-react";
 
 interface PeopleManagerProps {
   people: Person[];
@@ -155,15 +155,24 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
       {/* Header Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-100 pb-5">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight text-zinc-950">Gestão do Núcleo Familiar</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-semibold tracking-tight text-zinc-950">Gestão do Núcleo Familiar</h2>
+            {/* Chip discreto do plano atual */}
+            {plan === 'premium' ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                <Crown className="h-3 w-3" /> Plano Premium
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">
+                Plano Básico — 1 familiar
+              </span>
+            )}
+          </div>
           <p className="text-sm text-zinc-500 mt-0.5">Administre os membros da família responsáveis pelas receitas ou vinculados às despesas.</p>
         </div>
         <button
           onClick={() => {
-            if (!canAddMore) {
-              alert(`Plano ${plan} permite apenas 1 pessoa. Upgrade para Premium para adicionar mais.`);
-              return;
-            }
+            if (!canAddMore) return;
             setShowAddForm(!showAddForm);
           }}
           id="btn-add-person"
@@ -173,10 +182,10 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
               ? 'bg-zinc-950 text-white hover:bg-zinc-800'
               : 'bg-zinc-300 text-zinc-500 cursor-not-allowed'
           }`}
-          title={!canAddMore ? `Limite de pessoas atingido para o plano ${plan}` : ''}
+          title={!canAddMore ? 'O plano Básico permite apenas você. Faça upgrade para o Premium para adicionar mais familiares.' : ''}
         >
           <Plus className="h-4 w-4" />
-          {canAddMore ? 'Adicionar Integrante' : 'Limite atingido'}
+          {canAddMore ? 'Adicionar Integrante' : 'Limite atingido (Premium)'}
         </button>
       </div>
 
@@ -429,6 +438,19 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
                 </div>
               )}
             </div>
+
+            {/* Aviso de dados incompletos (ex.: pessoas vindas da migração só com nome) */}
+            {!person.email?.trim() && !person.whatsapp?.trim() && (
+              <button
+                type="button"
+                onClick={() => handleOpenEdit(person)}
+                className="w-full inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                title="Adicione e-mail e WhatsApp deste integrante"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Complete os dados
+              </button>
+            )}
           </div>
         );
         })}
@@ -493,7 +515,7 @@ export default function PeopleManager({ people, canAddMore, plan, onAddPerson, o
                       <option value="conjuge">Cônjuge / Parceiro(a)</option>
                       <option value="filho(a)">Filho(a)</option>
                       <option value="pai/mae">Pai / Mãe</option>
-                      <option value="outro font-sans">Outro Familiar</option>
+                      <option value="outro">Outro Familiar</option>
                     </select>
                   </div>
 

@@ -28,6 +28,7 @@ const PARENTESCO_MAP: Record<string, string> = {
 export interface Ctx {
   id_usuario: bigint;
   email: string;
+  plano: string;
 }
 
 /**
@@ -72,7 +73,7 @@ export async function getOrCreateUsuario(authUser: AuthUser): Promise<Ctx> {
     });
   }
 
-  return { id_usuario: usuario.id_usuario, email: usuario.email };
+  return { id_usuario: usuario.id_usuario, email: usuario.email, plano: usuario.plano };
 }
 
 /**
@@ -176,18 +177,21 @@ export async function ensureProjetoPessoa(
   id_pessoa: bigint,
   opts: { relationship?: string; cor?: string; avatar?: string | null } = {},
 ): Promise<bigint> {
-  const id_parentesco = await resolveParentescoId(opts.relationship);
+  // No UPDATE, só altera o que foi explicitamente informado — assim chamadas
+  // sem `relationship` (ex.: ao lançar receita/despesa) NÃO sobrescrevem o
+  // parentesco já definido (evita o titular virar "Outro" a cada lançamento).
+  const update: Record<string, unknown> = {};
+  if (opts.relationship) update.id_parentesco = await resolveParentescoId(opts.relationship);
+  if (opts.cor) update.cor = opts.cor;
+  if (opts.avatar !== undefined) update.avatar = opts.avatar;
+
   const pp = await prisma.projeto_pessoas.upsert({
     where: { id_projeto_id_pessoa: { id_projeto, id_pessoa } },
-    update: {
-      id_parentesco,
-      ...(opts.cor ? { cor: opts.cor } : {}),
-      avatar: opts.avatar ?? undefined,
-    },
+    update,
     create: {
       id_projeto,
       id_pessoa,
-      id_parentesco,
+      id_parentesco: await resolveParentescoId(opts.relationship), // default "Outro"
       cor: opts.cor || "#3B82F6",
       avatar: opts.avatar ?? null,
     },

@@ -16,8 +16,9 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { verifyToken, AuthError } from "./auth";
-import { getOrCreateUsuario } from "./context";
+import { getOrCreateUsuario, Ctx } from "./context";
 import * as svc from "./services";
+import { previewMigration, executeMigration } from "./migration";
 
 export interface ApiResponse {
   status: number;
@@ -138,12 +139,32 @@ async function handleAdapted(
   method: string,
   id: string | undefined,
   body: any,
-  id_usuario: bigint,
+  ctx: Ctx,
 ): Promise<ApiResponse> {
+  const id_usuario = ctx.id_usuario;
   switch (resource) {
+    case "me":
+      if (method === "GET") {
+        const pessoasCount = await prisma.pessoas.count({ where: { id_usuario } });
+        const maxPessoas = ctx.plano === "premium" ? null : 1;
+        return json(200, { plano: ctx.plano, maxPessoas, pessoasCount });
+      }
+      break;
+
+    case "migration":
+      if (method === "POST") {
+        const { action, fileData, projectName, personMap } = body || {};
+        if (!fileData) throw Object.assign(new Error("Arquivo (fileData) ausente"), { status: 400 });
+        const mctx = { id_usuario: ctx.id_usuario, plano: ctx.plano };
+        if (action === "preview") return json(200, await previewMigration(mctx, fileData));
+        if (action === "execute") return json(200, await executeMigration(mctx, fileData, projectName, personMap));
+        throw Object.assign(new Error('action deve ser "preview" ou "execute"'), { status: 400 });
+      }
+      break;
+
     case "people":
       if (method === "GET") return json(200, await svc.listPeople(id_usuario));
-      if (method === "POST" || method === "PUT") return json(200, await svc.savePerson(id_usuario, body));
+      if (method === "POST" || method === "PUT") return json(200, await svc.savePerson(id_usuario, body, ctx.plano));
       if (method === "DELETE" && id) return json(200, (await svc.deletePerson(id_usuario, id), { success: true }));
       break;
 
@@ -186,6 +207,8 @@ async function handleAdapted(
 }
 
 const ADAPTED = new Set([
+  "me",
+  "migration",
   "people",
   "incomes",
   "expenses",
@@ -206,20 +229,19 @@ export async function handleApi(
   if (!resource) return json(404, { error: "Recurso não especificado" });
 
   // Autenticação
-  let id_usuario: bigint;
+  let ctx: Ctx;
   try {
     const authUser = await verifyToken(authorization);
-    const ctx = await getOrCreateUsuario(authUser);
-    id_usuario = ctx.id_usuario;
+    ctx = await getOrCreateUsuario(authUser);
   } catch (err) {
     if (err instanceof AuthError) return json(401, { error: err.message });
     return json(500, { error: "Falha na autenticação" });
   }
 
   try {
-    if (ADAPTED.has(resource)) return await handleAdapted(resource, method, id, body, id_usuario);
+    if (ADAPTED.has(resource)) return await handleAdapted(resource, method, id, body, ctx);
     const cfg = CRUD[resource];
-    if (cfg) return await handleCrud(cfg, method, id, body, id_usuario);
+    if (cfg) return await handleCrud(cfg, method, id, body, ctx.id_usuario);
     return json(404, { error: `Recurso desconhecido: ${resource}` });
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 500;

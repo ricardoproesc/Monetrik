@@ -1,8 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { Person, Income, Expense } from "../types";
-import { Settings as SettingsIcon, Download, Upload, AlertCircle, CheckCircle, Loader, Lock, ExternalLink } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  Download,
+  Upload,
+  AlertCircle,
+  CheckCircle,
+  Loader,
+  Crown,
+  ArrowLeft,
+  FileSpreadsheet,
+} from "lucide-react";
 import type { SubcategoryItem } from "./TransactionsManager";
-import { loadIncomes, deleteIncome, loadExpenses, deleteExpense, batchSaveItems } from "../lib/api";
+import {
+  downloadMigrationTemplate,
+  migrationPreview,
+  migrationExecute,
+  loadProjetos,
+  renameProject,
+  type MigrationPreview,
+} from "../lib/api";
 
 interface SettingsProps {
   people: Person[];
@@ -15,630 +32,441 @@ interface SettingsProps {
   onGoToSubcategories?: () => void;
 }
 
-type MigrationStep = "info" | "flowChoice" | "config" | "confirm" | "uploading" | "validating" | "confirmPassword" | "success" | "error";
+// Fluxo novo: intro -> upload -> preview -> confirm -> success/error.
+type MigrationStep = "intro" | "preview" | "executing" | "success" | "error";
 
 export default function Settings({
   people,
-  incomes,
-  expenses,
-  subcategories,
-  email,
-  userId,
   onMigrationComplete,
-  onGoToSubcategories,
 }: SettingsProps) {
-  const [localSubcategories, setLocalSubcategories] = useState<SubcategoryItem[]>(subcategories);
-  const [step, setStep] = useState<MigrationStep>("flowChoice");
-  const [migrationMode, setMigrationMode] = useState<"prepare" | "upload">("prepare");
-  const [selectedPeople, setSelectedPeople] = useState<string[]>(people.map(p => p.id));
-
-  const incomeSubcats = localSubcategories.filter(s => s.type === "income");
-  const expenseSubcats = localSubcategories.filter(s => s.type === "expense");
-
-  const [selectedIncomeSubcats, setSelectedIncomeSubcats] = useState<string[]>(
-    incomeSubcats.map(s => s.id)
-  );
-  const [selectedExpenseSubcats, setSelectedExpenseSubcats] = useState<string[]>(
-    expenseSubcats.map(s => s.id)
-  );
+  const [step, setStep] = useState<MigrationStep>("intro");
   const [file, setFile] = useState<File | null>(null);
-  const [password, setPassword] = useState("");
+  const [fileData, setFileData] = useState<string>("");
+  const [preview, setPreview] = useState<MigrationPreview | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Atualizar quando subcategories prop mudar
+  // Projeto atual (primeiro projeto do usuário) — usado para nome pré-preenchido e rename.
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string>("");
+  const [savedCounts, setSavedCounts] = useState<{
+    pessoasCriadas: number;
+    categorias: number;
+    subcategorias: number;
+    receitas: number;
+    despesas: number;
+  } | null>(null);
+
+  // nomePlanilha -> id de familiar existente OU "new" (vínculo escolhido).
+  const [personMap, setPersonMap] = useState<Record<string, string>>({});
+
+  // Carrega o projeto atual ao montar.
   useEffect(() => {
-    setLocalSubcategories(subcategories);
-  }, [subcategories]);
+    loadProjetos()
+      .then((projetos) => {
+        const first = projetos[0];
+        if (first) {
+          setProjectId(first.id_projeto);
+          setProjectName(first.nome || "");
+        }
+      })
+      .catch(() => {});
+  }, []);
 
-  const isTitular = people.some(p => p.relationship === "principal");
-  if (!isTitular) {
+  // Ao receber um preview, inicializa o vínculo de cada pessoa:
+  // match exato -> a pessoa existente; senão a sugestão (se houver); senão "novo".
+  useEffect(() => {
+    if (!preview) return;
+    const m: Record<string, string> = {};
+    for (const p of preview.pessoas) {
+      m[p.nomePlanilha] = p.existenteId ?? p.sugestaoId ?? "new";
+    }
+    setPersonMap(m);
+  }, [preview]);
+
+  // Quantas pessoas serão de fato CRIADAS (mapeadas para "new") e se isso
+  // exige Premium no plano básico.
+  const novasCount = preview
+    ? preview.pessoas.filter((p) => !p.existenteId && (personMap[p.nomePlanilha] ?? "new") === "new").length
+    : 0;
+  const requerPremium = !!preview && novasCount > 0 && preview.plano === "basico";
+  const podeExecutar = !!preview && preview.erros.length === 0 && !requerPremium;
+
+  // O usuário autenticado é o dono da conta. Só exigimos que o cadastro
+  // inicial (onboarding) tenha sido concluído — a migração precisa de um
+  // titular cadastrado para ser o responsável do projeto.
+  if (people.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <AlertCircle size={32} className="text-yellow-600 mx-auto mb-3" />
-          <p className="text-yellow-900 font-semibold">Apenas o titular da conta pode acessar Configurações</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+          <AlertCircle size={32} className="text-amber-600 mx-auto mb-3" />
+          <p className="text-amber-900 font-semibold">Conclua o cadastro inicial antes de migrar dados.</p>
         </div>
       </div>
     );
   }
 
   async function handleDownloadTemplate() {
+    setDownloading(true);
+    setErrorMsg("");
     try {
-      const selectedPeopleData = people.filter(p => selectedPeople.includes(p.id));
-      const selectedIncomeSubcatsData = localSubcategories.filter(s =>
-        s.type === "income" && selectedIncomeSubcats.includes(s.id)
-      );
-      const selectedExpenseSubcatsData = localSubcategories.filter(s =>
-        s.type === "expense" && selectedExpenseSubcats.includes(s.id)
-      );
-
-      const response = await fetch("/api/migration/template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          people: selectedPeopleData,
-          incomes,
-          expenses,
-          incomeSubcategories: selectedIncomeSubcatsData,
-          expenseSubcategories: selectedExpenseSubcatsData,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Erro ao gerar template");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "monetrik-migracao.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      setStep("confirm");
+      await downloadMigrationTemplate();
     } catch (error) {
-      setErrorMsg(`Erro: ${error instanceof Error ? error.message : "desconhecido"}`);
+      setErrorMsg(error instanceof Error ? error.message : "Erro ao baixar o modelo");
+    } finally {
+      setDownloading(false);
     }
+  }
+
+  function fileToBase64(f: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = () => reject(new Error("Não foi possível ler o arquivo"));
+      reader.readAsDataURL(f);
+    });
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
-    if (selected) {
-      if (!selected.name.match(/\.xlsx$/i)) {
-        alert("Por favor, selecione um arquivo Excel (.xlsx)");
-        return;
-      }
-      if (selected.size > 50 * 1024 * 1024) {
-        alert("Arquivo muito grande (máximo 50MB)");
-        return;
-      }
-      setFile(selected);
+    if (!selected) return;
+    if (!selected.name.match(/\.xlsx$/i)) {
+      setErrorMsg("Por favor, selecione um arquivo Excel (.xlsx)");
+      return;
+    }
+    setErrorMsg("");
+    setFile(selected);
+    setLoading(true);
+    try {
+      const b64 = await fileToBase64(selected);
+      setFileData(b64);
+      const result = await migrationPreview(b64);
+      setPreview(result);
+      setStep("preview");
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : "Erro ao analisar a planilha");
+      setStep("error");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleValidateFile() {
-    if (!file) {
-      alert("Selecione um arquivo");
-      return;
-    }
-
-    setStep("validating");
+  async function handleExecute() {
+    if (!podeExecutar) return;
+    setStep("executing");
+    setErrorMsg("");
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const fileData = (e.target?.result as string).split(",")[1];
-
-        const response = await fetch("/api/migration/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileData,
-            people: people.filter(p => selectedPeople.includes(p.id)),
-            incomeSubcategories: subcategories.filter(s =>
-              s.type === "income" && selectedIncomeSubcats.includes(s.id)
-            ),
-            expenseSubcategories: subcategories.filter(s =>
-              s.type === "expense" && selectedExpenseSubcats.includes(s.id)
-            ),
-          }),
-        });
-
-        if (!response.ok) {
-          const err = await response.json();
-          setErrorMsg(err.error || "Erro na validação");
-          setStep("error");
-          return;
-        }
-
-        const result = await response.json();
-        if (!result.valid) {
-          setErrorMsg(`Arquivo inválido: ${result.errors?.[0]?.error || "dados inconsistentes"}`);
-          setStep("error");
-          return;
-        }
-
-        setStep("confirmPassword");
-      };
-      reader.readAsDataURL(file);
+      // Se o usuário ajustou o nome do projeto, salva antes de importar.
+      if (projectId && projectName.trim()) {
+        await renameProject(projectId, projectName.trim()).catch(() => {});
+      }
+      const result = await migrationExecute(fileData, projectName.trim() || undefined, personMap);
+      setSavedCounts(result);
+      setStep("success");
+      onMigrationComplete();
+      // Recarrega a página para refletir todos os dados importados (pessoas,
+      // categorias, subcategorias e lançamentos) já carregados do backend.
+      setTimeout(() => window.location.reload(), 2500);
     } catch (error) {
-      setErrorMsg(`Erro: ${error instanceof Error ? error.message : "desconhecido"}`);
+      setErrorMsg(error instanceof Error ? error.message : "Erro ao importar os dados");
       setStep("error");
     }
   }
 
-  async function handleConfirmMigration() {
-    if (!password) {
-      alert("Digite sua senha para confirmar");
-      return;
-    }
-
-    setStep("uploading");
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const fileData = (e.target?.result as string).split(",")[1];
-
-        const response = await fetch("/api/migration/execute", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileData,
-            email,
-            password,
-            people: people.filter(p => selectedPeople.includes(p.id)),
-          }),
-        });
-
-        if (!response.ok) {
-          const err = await response.json();
-          setErrorMsg(err.error || "Erro na migração");
-          setStep("error");
-          return;
-        }
-
-        const result = await response.json();
-
-        // Substituir todas as receitas/despesas pelo conteúdo importado (Postgres via API).
-        try {
-          setStep("validating");
-
-          const [curIncomes, curExpenses] = await Promise.all([
-            loadIncomes(userId).catch(() => [] as Income[]),
-            loadExpenses(userId).catch(() => [] as Expense[]),
-          ]);
-          await Promise.all([
-            ...curIncomes.map((i) => deleteIncome(userId, i.id)),
-            ...curExpenses.map((e) => deleteExpense(userId, e.id)),
-          ]);
-
-          if (Array.isArray(result.newIncomes) && result.newIncomes.length > 0) {
-            await batchSaveItems(userId, "incomes", result.newIncomes);
-          }
-          if (Array.isArray(result.newExpenses) && result.newExpenses.length > 0) {
-            await batchSaveItems(userId, "expenses", result.newExpenses);
-          }
-
-          // Sucesso - mostrar apenas após salvar
-          setSuccessMsg(
-            `✓ Migração concluída!\n${result.incomesImported} receitas importadas\n${result.expensesImported} despesas importadas`
-          );
-          setStep("success");
-          setPassword("");
-          setFile(null);
-
-          setTimeout(() => {
-            onMigrationComplete();
-          }, 2000);
-        } catch (firebaseError) {
-          console.error("Erro ao salvar dados:", firebaseError);
-          setErrorMsg(`Erro ao salvar dados: ${firebaseError instanceof Error ? firebaseError.message : "desconhecido"}`);
-          setStep("error");
-        }
-      };
-      reader.readAsDataURL(file!);
-    } catch (error) {
-      setErrorMsg(`Erro: ${error instanceof Error ? error.message : "desconhecido"}`);
-      setStep("error");
-    }
+  function resetFlow() {
+    setStep("intro");
+    setFile(null);
+    setFileData("");
+    setPreview(null);
+    setErrorMsg("");
+    setSavedCounts(null);
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <SettingsIcon size={24} className="text-gray-700" />
-        <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+      <div className="flex items-center gap-3 mb-2">
+        <SettingsIcon size={22} className="text-zinc-700" />
+        <h1 className="text-xl font-bold text-zinc-950">Migração de Dados</h1>
       </div>
 
-      {/* Migração de Dados */}
-      <div className="space-y-4">
-        {/* Escolha de Fluxo */}
-        {step === "flowChoice" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Migração de Dados</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Opção 1: Preparar novo template */}
-              <button
-                onClick={() => {
-                  setMigrationMode("prepare");
-                  setStep("info");
-                }}
-                className="border-2 border-emerald-200 rounded-lg p-6 hover:bg-emerald-50 hover:border-emerald-400 transition-all text-left"
-              >
-                <div className="text-2xl mb-2">📥</div>
-                <h3 className="font-bold text-gray-900 mb-2">Preparar novo template</h3>
-                <p className="text-sm text-gray-600">
-                  Selecione pessoas e subcategorias para baixar um novo template
-                </p>
-              </button>
-
-              {/* Opção 2: Fazer upload direto */}
-              <button
-                onClick={() => {
-                  setMigrationMode("upload");
-                  setStep("confirm");
-                }}
-                className="border-2 border-blue-200 rounded-lg p-6 hover:bg-blue-50 hover:border-blue-400 transition-all text-left"
-              >
-                <div className="text-2xl mb-2">📤</div>
-                <h3 className="font-bold text-gray-900 mb-2">Usar template existente</h3>
-                <p className="text-sm text-gray-600">
-                  Você já tem um template preenchido? Faça upload agora
-                </p>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {step === "validating" && (
-          <div className="flex flex-col items-center justify-center py-12 space-y-4">
-            <Loader size={48} className="text-blue-600 animate-spin" />
-            <div className="text-center">
-              <p className="text-lg font-semibold text-gray-900">Processando migração...</p>
-              <p className="text-sm text-gray-600 mt-2">Por favor aguarde</p>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Informativo */}
-        {step === "info" && (
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 space-y-4">
-            <div className="flex items-start gap-4">
-              <AlertCircle size={32} className="text-blue-600 flex-shrink-0 mt-1" />
-              <div>
-                <h3 className="text-lg font-bold text-blue-900 mb-2">Antes de começar...</h3>
-                <p className="text-blue-800 mb-3">
-                  Para realizar a migração de dados, certifique-se de que:
-                </p>
-                <ul className="space-y-2 text-sm text-blue-800">
-                  <li className="flex items-center gap-2">
-                    <span className={people.length > 0 ? "text-green-600" : "text-orange-600"}>
-                      {people.length > 0 ? "✓" : "⚠️"}
-                    </span>
-                    <strong>Todos os usuários/pessoas estão cadastrados</strong>
-                    <span className="text-xs">({people.length} cadastrado(s))</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className={subcategories.length > 0 ? "text-green-600" : "text-orange-600"}>
-                      {subcategories.length > 0 ? "✓" : "⚠️"}
-                    </span>
-                    <strong>Todas as subcategorias estão criadas</strong>
-                    <span className="text-xs">({subcategories.length} cadastrada(s))</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
+      {/* Nome do projeto (editável) */}
+      {projectId && (
+        <div className="bg-white border border-zinc-200 rounded-xl p-4 space-y-2">
+          <label className="block text-xs font-semibold text-zinc-700">Nome do projeto</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Ex: Finanças da Família"
+              className="flex-1 text-sm border border-zinc-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:border-zinc-400"
+            />
             <button
-              onClick={() => setStep("config")}
-              disabled={people.length === 0 || subcategories.length === 0}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg"
+              type="button"
+              onClick={async () => {
+                if (!projectId || !projectName.trim()) return;
+                try {
+                  await renameProject(projectId, projectName.trim());
+                } catch (error) {
+                  setErrorMsg(error instanceof Error ? error.message : "Erro ao renomear projeto");
+                }
+              }}
+              className="px-4 py-2 text-xs font-semibold bg-zinc-950 text-white rounded-lg hover:bg-zinc-800 transition-colors"
             >
-              {people.length === 0 || subcategories.length === 0
-                ? "⚠️ Cadastre pessoas e subcategorias primeiro"
-                : "✓ Continuar com a Migração"}
+              Salvar
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Configuration Section - apenas para modo "prepare" */}
-        {(step === "config" || (step === "confirm" && migrationMode === "prepare")) && (
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Migração de Dados em Massa</h2>
-          <div className="space-y-4">
-            <p className="text-gray-600">
-              Selecione quais dados deseja incluir no template de migração:
-            </p>
-
-            {/* Pessoas */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-semibold text-gray-700">Pessoas ({selectedPeople.length}/{people.length})</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedPeople(people.map(p => p.id))}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setSelectedPeople([])}
-                    className="text-xs text-gray-500 hover:text-gray-700 font-semibold px-2 py-1 rounded hover:bg-gray-100"
-                  >
-                    Nenhum
-                  </button>
-                </div>
-              </div>
-              {people.length === 0 ? (
-                <p className="text-sm text-gray-500 italic bg-gray-50 p-3 rounded">Nenhuma pessoa cadastrada</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {people.map(person => (
-                    <div key={person.id} className="flex items-center">
-                      <input
-                        id={`person-${person.id}`}
-                        type="checkbox"
-                        checked={selectedPeople.includes(person.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedPeople([...selectedPeople, person.id]);
-                          } else {
-                            setSelectedPeople(selectedPeople.filter(id => id !== person.id));
-                          }
-                        }}
-                        className="w-4 h-4 cursor-pointer accent-blue-600"
-                      />
-                      <label htmlFor={`person-${person.id}`} className="ml-2 text-sm text-gray-700 cursor-pointer">
-                        {person.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Info: Configure no menu de Subcategorias */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-semibold text-blue-900 mb-2">
-                  Deseja adicionar novas subcategorias?
+      {/* Passo 1: Intro / baixar modelo / upload */}
+      {step === "intro" && (
+        <div className="space-y-4">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <FileSpreadsheet size={24} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-zinc-950 mb-1">1. Baixe o modelo</h3>
+                <p className="text-sm text-zinc-600 mb-2">
+                  Preencha a planilha com suas movimentações. Colunas esperadas:
                 </p>
-                <p className="text-blue-800 mb-3">
-                  Configure no menu de Subcategorias do app para manter tudo organizado.
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  <strong>Nome pessoa</strong> | <strong>tipo</strong> (R = receita / D = despesa) |{" "}
+                  <strong>categoria</strong> | <strong>fixa</strong> (S/N) | <strong>subcategoria</strong> |{" "}
+                  <strong>data</strong> | <strong>valor</strong> | <strong>observacao</strong>
                 </p>
-                {onGoToSubcategories && (
-                  <button
-                    onClick={onGoToSubcategories}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all"
-                  >
-                    <ExternalLink size={14} />
-                    Ir para Subcategorias
-                  </button>
-                )}
               </div>
             </div>
-
-            {/* Subcategorias Receitas */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-semibold text-gray-700">Subcategorias de Receitas ({selectedIncomeSubcats.length}/{incomeSubcats.length})</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedIncomeSubcats(incomeSubcats.map(s => s.id))}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setSelectedIncomeSubcats([])}
-                    className="text-xs text-gray-500 hover:text-gray-700 font-semibold px-2 py-1 rounded hover:bg-gray-100"
-                  >
-                    Nenhum
-                  </button>
-                </div>
-              </div>
-              {incomeSubcats.length === 0 ? (
-                <p className="text-sm text-gray-500 italic bg-gray-50 p-3 rounded">Nenhuma subcategoria de receita cadastrada</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {incomeSubcats.map(subcat => (
-                    <div key={subcat.id} className="flex items-center">
-                      <input
-                        id={`income-${subcat.id}`}
-                        type="checkbox"
-                        checked={selectedIncomeSubcats.includes(subcat.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedIncomeSubcats([...selectedIncomeSubcats, subcat.id]);
-                          } else {
-                            setSelectedIncomeSubcats(selectedIncomeSubcats.filter(id => id !== subcat.id));
-                          }
-                        }}
-                        className="w-4 h-4 cursor-pointer accent-green-600"
-                      />
-                      <label htmlFor={`income-${subcat.id}`} className="ml-2 text-sm text-gray-700 cursor-pointer">
-                        {subcat.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Subcategorias Despesas */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-semibold text-gray-700">Subcategorias de Despesas ({selectedExpenseSubcats.length}/{expenseSubcats.length})</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedExpenseSubcats(expenseSubcats.map(s => s.id))}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setSelectedExpenseSubcats([])}
-                    className="text-xs text-gray-500 hover:text-gray-700 font-semibold px-2 py-1 rounded hover:bg-gray-100"
-                  >
-                    Nenhum
-                  </button>
-                </div>
-              </div>
-              {expenseSubcats.length === 0 ? (
-                <p className="text-sm text-gray-500 italic bg-gray-50 p-3 rounded">Nenhuma subcategoria de despesa cadastrada</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {expenseSubcats.map(subcat => (
-                    <div key={subcat.id} className="flex items-center">
-                      <input
-                        id={`expense-${subcat.id}`}
-                        type="checkbox"
-                        checked={selectedExpenseSubcats.includes(subcat.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedExpenseSubcats([...selectedExpenseSubcats, subcat.id]);
-                          } else {
-                            setSelectedExpenseSubcats(selectedExpenseSubcats.filter(id => id !== subcat.id));
-                          }
-                        }}
-                        className="w-4 h-4 cursor-pointer accent-red-600"
-                      />
-                      <label htmlFor={`expense-${subcat.id}`} className="ml-2 text-sm text-gray-700 cursor-pointer">
-                        {subcat.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <button
               onClick={handleDownloadTemplate}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 mt-6"
+              disabled={downloading}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 text-white rounded-lg transition-colors"
             >
-              <Download size={20} />
-              Baixar Template
+              {downloading ? <Loader size={16} className="animate-spin" /> : <Download size={16} />}
+              Baixar modelo (.xlsx)
             </button>
           </div>
-          </div>
-        )}
 
-        {/* Step 2: Upload and Validate */}
-        {step === "confirm" && (
-          <div className="mt-6 pt-6 border-t">
-            <h3 className="font-semibold text-gray-900 mb-4">2. Preencha e faça upload do template</h3>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <h3 className="font-semibold text-zinc-950 mb-3">2. Envie a planilha preenchida</h3>
+            <div className="border-2 border-dashed border-zinc-300 rounded-lg p-8 text-center hover:border-zinc-400 transition-colors">
               <input
                 type="file"
                 id="file-input"
                 accept=".xlsx"
                 onChange={handleFileSelect}
                 className="hidden"
+                disabled={loading}
               />
-              <label htmlFor="file-input" className="cursor-pointer">
-                <Upload size={40} className="text-blue-600 mx-auto mb-3" />
-                <p className="text-lg font-semibold text-gray-900">Selecione o arquivo</p>
-                <p className="text-sm text-gray-600">Arquivo Excel (.xlsx) preenchido</p>
+              <label htmlFor="file-input" className="cursor-pointer block">
+                {loading ? (
+                  <Loader size={36} className="text-zinc-500 mx-auto mb-3 animate-spin" />
+                ) : (
+                  <Upload size={36} className="text-zinc-500 mx-auto mb-3" />
+                )}
+                <p className="text-sm font-semibold text-zinc-900">
+                  {loading ? "Analisando planilha..." : "Selecione o arquivo .xlsx"}
+                </p>
+                {file && !loading && (
+                  <p className="text-xs text-zinc-500 mt-1">{file.name}</p>
+                )}
               </label>
             </div>
-
-            {file && (
-              <div className="mt-4 flex items-center gap-3 bg-green-50 p-4 rounded border border-green-200">
-                <CheckCircle size={20} className="text-green-600" />
-                <span className="text-green-900 font-semibold">{file.name}</span>
-              </div>
-            )}
-
-            <button
-              onClick={handleValidateFile}
-              disabled={!file || step === "validating"}
-              className="w-full mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
-            >
-              {step === "validating" && <Loader size={18} className="animate-spin" />}
-              {step === "validating" ? "Processando..." : "Validar e Prosseguir"}
-            </button>
           </div>
-        )}
 
-        {/* Step 3: Confirm Password */}
-        {step === "confirmPassword" && (
-          <div className="space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <AlertCircle size={24} className="text-red-600 mb-2" />
-              <p className="text-red-900 font-semibold mb-2">⚠️ Esta ação é irreversível!</p>
-              <p className="text-red-800 text-sm">
-                Todos os registros de receitas e despesas existentes serão <strong>permanentemente deletados</strong> e
-                substituídos pelos dados na planilha.
+          {errorMsg && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{errorMsg}</div>
+          )}
+        </div>
+      )}
+
+      {/* Passo 2: Preview */}
+      {step === "preview" && preview && (
+        <div className="space-y-4">
+          {/* Resumo */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-zinc-950">{preview.lancamentos}</p>
+              <p className="text-[11px] text-zinc-500">Lançamentos</p>
+            </div>
+            <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-zinc-950">{preview.categorias.length}</p>
+              <p className="text-[11px] text-zinc-500">Categorias</p>
+            </div>
+            <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-zinc-950">{preview.subcategorias}</p>
+              <p className="text-[11px] text-zinc-500">Subcategorias</p>
+            </div>
+            <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-zinc-950">{preview.pessoas.length}</p>
+              <p className="text-[11px] text-zinc-500">Pessoas</p>
+            </div>
+          </div>
+
+          {/* Pessoas — confirmação de vínculo */}
+          <div className="bg-white border border-zinc-200 rounded-xl p-4 space-y-2">
+            <h3 className="text-sm font-semibold text-zinc-950">Pessoas na planilha</h3>
+            <p className="text-[11px] text-zinc-500">
+              Confirme a quem cada nome corresponde. Nomes parecidos com seus familiares já vêm vinculados automaticamente.
+            </p>
+            <div className="space-y-2 pt-1">
+              {preview.pessoas.map((p) => (
+                <div key={p.nomePlanilha} className="flex items-center justify-between gap-3 border border-zinc-100 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-900 truncate">{p.nomePlanilha}</p>
+                    {!p.existenteId && p.sugestaoNome && (
+                      <p className="text-[11px] text-amber-600">Parece ser “{p.sugestaoNome}” — confirme ao lado</p>
+                    )}
+                  </div>
+                  {p.existenteId ? (
+                    <span className="text-[11px] px-2 py-1 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200 shrink-0">
+                      já cadastrado
+                    </span>
+                  ) : (
+                    <select
+                      value={personMap[p.nomePlanilha] ?? "new"}
+                      onChange={(e) => setPersonMap((m) => ({ ...m, [p.nomePlanilha]: e.target.value }))}
+                      className="text-xs border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-zinc-400 shrink-0 max-w-[55%]"
+                    >
+                      <option value="new">+ Criar novo familiar</option>
+                      {preview.pessoasExistentes.map((ex) => (
+                        <option key={ex.id} value={ex.id}>Vincular a {ex.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Banner Premium */}
+          {requerPremium && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <Crown size={22} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Sua planilha tem {novasCount} novo(s) familiar(es)</p>
+                <p className="text-sm text-amber-800 mt-1">
+                  O plano Básico permite só você. Vincule-os a familiares já cadastrados acima, ou faça upgrade para o Premium (R$ 19,90/mês) para criar novos.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Erros */}
+          {preview.erros.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-red-900">
+                {preview.erros.length} erro(s) encontrados — corrija a planilha e envie novamente:
               </p>
+              <ul className="space-y-1 max-h-48 overflow-y-auto">
+                {preview.erros.map((err, i) => (
+                  <li key={i} className="text-xs text-red-800">
+                    <strong>Linha {err.linha}</strong> — {err.campo}: {err.erro}
+                  </li>
+                ))}
+              </ul>
             </div>
+          )}
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Digite sua senha para confirmar
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Sua senha"
-                  className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
-                />
-              </div>
+          {/* Confirmação: nome do projeto */}
+          {podeExecutar && (
+            <div className="bg-white border border-zinc-200 rounded-xl p-4 space-y-2">
+              <label className="block text-xs font-semibold text-zinc-700">Nome do projeto</label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Ex: Finanças da Família"
+                className="w-full text-sm border border-zinc-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:border-zinc-400"
+              />
             </div>
+          )}
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setStep("confirm");
-                  setPassword("");
-                  setFile(null);
-                }}
-                className="flex-1 border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmMigration}
-                disabled={!password || step === "validating"}
-                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
-              >
-                {step === "validating" && <Loader size={18} className="animate-spin" />}
-                {step === "validating" ? "Salvando..." : "Confirmar Migração"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Success */}
-        {step === "success" && (
-          <div className="text-center space-y-4">
-            <CheckCircle size={48} className="text-green-600 mx-auto" />
-            <div className="whitespace-pre-line text-gray-700 font-semibold">{successMsg}</div>
-          </div>
-        )}
-
-        {/* Error */}
-        {step === "error" && (
-          <div className="space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-900">{errorMsg}</div>
+          {/* Ações */}
+          <div className="flex gap-2">
             <button
-              onClick={() => {
-                setStep("config");
-                setErrorMsg("");
-                setPassword("");
-                setFile(null);
-              }}
-              className="w-full border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-50"
+              onClick={resetFlow}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
             >
+              <ArrowLeft size={16} />
               Voltar
             </button>
+            <button
+              onClick={handleExecute}
+              disabled={!podeExecutar}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              <Upload size={16} />
+              Importar dados
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Executando */}
+      {step === "executing" && (
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <Loader size={44} className="text-emerald-600 animate-spin" />
+          <p className="text-sm font-semibold text-zinc-900">Importando seus dados...</p>
+        </div>
+      )}
+
+      {/* Sucesso */}
+      {step === "success" && savedCounts && (
+        <div className="text-center space-y-4 py-6">
+          <CheckCircle size={48} className="text-emerald-600 mx-auto" />
+          <p className="text-lg font-bold text-zinc-950">Importação concluída!</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-md mx-auto text-sm">
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2">
+              <p className="font-bold text-zinc-950">{savedCounts.pessoasCriadas}</p>
+              <p className="text-[11px] text-zinc-500">Pessoas criadas</p>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2">
+              <p className="font-bold text-zinc-950">{savedCounts.categorias}</p>
+              <p className="text-[11px] text-zinc-500">Categorias</p>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2">
+              <p className="font-bold text-zinc-950">{savedCounts.subcategorias}</p>
+              <p className="text-[11px] text-zinc-500">Subcategorias</p>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2">
+              <p className="font-bold text-emerald-700">{savedCounts.receitas}</p>
+              <p className="text-[11px] text-zinc-500">Receitas</p>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2">
+              <p className="font-bold text-red-600">{savedCounts.despesas}</p>
+              <p className="text-[11px] text-zinc-500">Despesas</p>
+            </div>
+          </div>
+          <p className="text-xs text-zinc-400">Atualizando a página para exibir os dados…</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center justify-center gap-1.5 bg-zinc-950 text-white font-semibold py-2 px-5 rounded-lg hover:bg-zinc-800 transition-colors text-sm"
+          >
+            Ver meus dados agora
+          </button>
+        </div>
+      )}
+
+      {/* Erro */}
+      {step === "error" && (
+        <div className="space-y-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-900">
+            {errorMsg || "Ocorreu um erro durante a migração."}
+          </div>
+          <button
+            onClick={resetFlow}
+            className="w-full inline-flex items-center justify-center gap-1.5 border border-zinc-200 text-zinc-700 font-semibold py-2 px-4 rounded-lg hover:bg-zinc-50 transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Voltar
+          </button>
+        </div>
+      )}
     </div>
   );
 }

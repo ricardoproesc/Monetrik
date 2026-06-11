@@ -18,9 +18,33 @@ const projectId =
 
 function getAdminAuth() {
   if (!admin.apps.length) {
-    admin.initializeApp({ projectId });
+    // `verifyIdToken` funciona só com projectId; já operações privilegiadas
+    // (ex.: gerar link de verificação) exigem credencial de service account.
+    const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (saJson) {
+      try {
+        admin.initializeApp({ credential: admin.credential.cert(JSON.parse(saJson)) });
+      } catch {
+        admin.initializeApp({ projectId });
+      }
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId });
+    } else {
+      admin.initializeApp({ projectId });
+    }
   }
   return admin.auth();
+}
+
+/**
+ * Gera o link de verificação de e-mail do Firebase (para enviarmos nós mesmos,
+ * via Resend, num e-mail HTML bonito). Requer credencial de service account
+ * (FIREBASE_SERVICE_ACCOUNT ou GOOGLE_APPLICATION_CREDENTIALS).
+ * `continueUrl`: para onde o usuário volta depois de verificar.
+ */
+export async function generateVerificationLink(email: string, continueUrl?: string): Promise<string> {
+  const actionCodeSettings = continueUrl ? { url: continueUrl, handleCodeInApp: false } : undefined;
+  return getAdminAuth().generateEmailVerificationLink(email, actionCodeSettings);
 }
 
 export interface AuthUser {

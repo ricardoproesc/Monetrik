@@ -20,7 +20,7 @@ import {
   loadExpenses, saveExpense, deleteExpense,
   loadSettings, saveSettings as fsaveSettings,
   loadSubcategories, saveSubcategories as fsSaveSubcategories,
-  migrateFromLocalStorage, batchSaveItems, setupProject,
+  migrateFromLocalStorage, batchSaveItems, setupProject, loadMe,
 } from "./lib/api";
 import type { OnboardingData } from "./components/OnboardingSetup";
 import type { SubcategoryItem } from "./components/TransactionsManager";
@@ -34,11 +34,10 @@ import FinaPlanMatrix from "./components/FinaPlanMatrix";
 import AIAssistant from "./components/AIAssistant";
 import SaasArchitectureDoc from "./components/SaasArchitectureDoc";
 import OnboardingSetup from "./components/OnboardingSetup";
-import ImportData from "./components/ImportData";
 import SettingsSidebar from "./components/SettingsSidebar";
 import {
   PiggyBank, ArrowDownRight, ArrowUpRight, Shield, Layers,
-  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, Upload, SettingsIcon
+  BookOpen, HelpCircle, Mail, Lock, Check, AlertCircle, Menu, X, Loader, SettingsIcon
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: AlertSettings = {
@@ -82,6 +81,9 @@ export default function App() {
   const [bootLoading, setBootLoading] = useState<boolean>(
     () => localStorage.getItem("kashfam_auth") === "true" && isFirebaseConfigured,
   );
+
+  // Plano do usuário (lido do backend via loadMe). Default conservador: básico.
+  const [plan, setPlan] = useState<string>("basico");
 
   // Subcategorias — por usuário (uid)
   const [subcategories, setSubcategories] = useState<SubcategoryItem[]>(() => {
@@ -131,7 +133,6 @@ export default function App() {
   // Navigation state
   const [activeTab, setActiveTab ] = useState<'dashboard' | 'planilha' | 'transactions' | 'people' | 'insights' | 'chatbot' | 'docs'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsSidebar, setShowSettingsSidebar] = useState(false);
   const [openSubcategoriesModal, setOpenSubcategoriesModal] = useState(false);
 
@@ -203,13 +204,15 @@ export default function App() {
           await migrateFromLocalStorage(uid).catch(() => {});
 
           // Carrega os dados do Postgres — fonte de verdade do onboarding
-          const [fsPeople, fsIncomes, fsExpenses, fsSettings] = await Promise.all([
+          const [fsPeople, fsIncomes, fsExpenses, fsSettings, me] = await Promise.all([
             loadPeople(uid).catch(() => [] as Person[]),
             loadIncomes(uid).catch(() => [] as Income[]),
             loadExpenses(uid).catch(() => [] as Expense[]),
             loadSettings(uid).catch(() => null),
+            loadMe().catch(() => null),
           ]);
 
+          if (me?.plano) setPlan(me.plano);
           setPeople(fsPeople);
           setIncomes(fsIncomes);
           setExpenses(fsExpenses);
@@ -304,6 +307,26 @@ export default function App() {
 
   const isPasswordValid = (p: string) => passwordRules.every(r => r.test(p));
 
+  // Envia o e-mail de verificação pelo nosso backend (HTML do Monetrik via
+  // Resend). Se o backend falhar (ex.: Resend ainda não configurado), cai no
+  // e-mail padrão do Firebase para não travar o cadastro.
+  const sendVerification = async (user: import("firebase/auth").User) => {
+    try {
+      const res = await fetch("/api/auth/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          displayName: user.displayName || nameInput.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (e) {
+      console.warn("[verify] Resend indisponível, usando e-mail padrão do Firebase:", e);
+      await sendEmailVerification(user);
+    }
+  };
+
   // ─── Cadastro ────────────────────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,7 +350,7 @@ export default function App() {
     try {
       if (isFirebaseConfigured && auth) {
         const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passInput);
-        await sendEmailVerification(cred.user);
+        await sendVerification(cred.user);
 
         // Desloga até o e-mail ser verificado
         await signOut(auth);
@@ -430,95 +453,6 @@ export default function App() {
     }
   };
 
-  const handleImportData = (importedRows: any[], newSubcategoryNames: string[]) => {
-    if (!people.length) {
-      alert("É necessário adicionar pelo menos um membro da família antes de importar.");
-      return;
-    }
-
-    const personId = principalPerson.id;
-    const newIncomes: Income[] = [];
-    const newExpenses: Expense[] = [];
-
-    // Criar novas subcategorias automaticamente
-    const updatedSubcategories = [...subcategories];
-    for (const subName of newSubcategoryNames) {
-      if (!updatedSubcategories.find(s => s.name === subName)) {
-        // Determinar se é income ou expense baseado nos dados
-        const isIncome = importedRows.some(
-          row => row.subcategoria === subName && row.tipo === 'RECEITA'
-        );
-        updatedSubcategories.push({
-          id: `sub-${Date.now()}-${Math.random()}`,
-          type: isIncome ? 'income' : 'expense',
-          category: subName,
-          name: subName,
-          active: true,
-        });
-      }
-    }
-
-    // Converter linhas importadas em Income/Expense
-    for (const row of importedRows) {
-      const baseData = {
-        date: row.data,
-        notes: row.observacoes || undefined,
-      };
-
-      if (row.tipo === 'RECEITA') {
-        newIncomes.push({
-          id: "",
-          personId,
-          category: row.subcategoria,
-          amount: Number(row.valor),
-          isFixed: false,
-          isRecurring: false,
-          recurrence: 'eventual',
-          ...baseData,
-        });
-      } else {
-        newExpenses.push({
-          id: "",
-          personId,
-          name: row.descricao,
-          category: row.subcategoria,
-          amount: Number(row.valor),
-          isFixed: false,
-          isRecurring: false,
-          recurrence: 'eventual',
-          paymentMethod: 'Pix',
-          ...baseData,
-        });
-      }
-    }
-
-    // Atualizar subcategorias localmente
-    setSubcategories(updatedSubcategories);
-
-    if (userId && isFirebaseConfigured) {
-      localStorage.setItem(`kashfam_subcategories_${userId}`, JSON.stringify(updatedSubcategories));
-      fsSaveSubcategories(userId, updatedSubcategories).catch(() => {});
-
-      // Persiste e atualiza o estado com os itens salvos (já com os IDs do banco)
-      if (newIncomes.length > 0) {
-        batchSaveItems(userId, 'incomes', newIncomes)
-          .then(saved => setIncomes(prev => [...prev, ...saved]))
-          .catch(e => console.error("[IMPORT incomes]", e));
-      }
-      if (newExpenses.length > 0) {
-        batchSaveItems(userId, 'expenses', newExpenses)
-          .then(saved => setExpenses(prev => [...prev, ...saved]))
-          .catch(e => console.error("[IMPORT expenses]", e));
-      }
-    } else {
-      // Sem backend: gera ids locais apenas para a sessão
-      setIncomes(prev => [...prev, ...newIncomes.map(i => ({ ...i, id: crypto.randomUUID() }))]);
-      setExpenses(prev => [...prev, ...newExpenses.map(e => ({ ...e, id: crypto.randomUUID() }))]);
-    }
-
-    setShowImportModal(false);
-  };
-
   const handleCompleteOnboarding = async (data: OnboardingData) => {
     if (userId && isFirebaseConfigured) {
       // Cria titular + projeto (nome escolhido) + vincula subcategorias selecionadas.
@@ -584,15 +518,14 @@ export default function App() {
   };
 
   // ─── Pessoas ────────────────────────────────────────────────────────────────
-  // Plano free: máximo 1 pessoa
-  const plan = "free"; // TODO: implementar sistema de planos real
-  const maxPeopleForPlan = plan === "free" ? 1 : Infinity;
+  // Plano básico: máximo 1 pessoa; premium: ilimitado.
+  const maxPeopleForPlan = plan === "premium" ? Infinity : 1;
   const validPeople = people.filter(p => p.id);
   const canAddMorePeople = validPeople.length < maxPeopleForPlan;
 
   const handleAddPerson = (newPerson: Omit<Person, 'id'>) => {
     if (!canAddMorePeople) {
-      alert(`Plano Free permite apenas ${maxPeopleForPlan} pessoa. Upgrade para Premium para adicionar mais.`);
+      notifyError("Seu plano Básico permite apenas você. Faça upgrade para o Premium para adicionar mais familiares.");
       return;
     }
     if (userId && isFirebaseConfigured) {
@@ -600,6 +533,7 @@ export default function App() {
         .then(saved => setPeople(prev => [...prev, saved]))
         .catch(e => {
           console.error("[ADD person]", e);
+          // O backend retorna 403 com {error} quando o limite do plano é excedido.
           notifyError(errMessage(e, "Não foi possível salvar o integrante."));
         });
     } else {
@@ -810,7 +744,7 @@ export default function App() {
                       if (!isFirebaseConfigured || !auth) return;
                       try {
                         const cred = await signInWithEmailAndPassword(auth, pendingVerificationEmail, passInput);
-                        await sendEmailVerification(cred.user);
+                        await sendVerification(cred.user);
                         await signOut(auth);
                         setAuthFeedback("E-mail de verificação reenviado! Verifique sua caixa de entrada.");
                         setAuthStatus('success');
@@ -1250,26 +1184,6 @@ export default function App() {
             )}
 
           </main>
-
-          {/* Import Data Button (Floating on transactions tab) */}
-          {activeTab === 'transactions' && isAuthenticated && (
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="fixed bottom-8 right-8 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition-all z-40"
-            >
-              <Upload size={20} />
-              Importar Dados
-            </button>
-          )}
-
-          {/* Import Data Modal */}
-          {showImportModal && isAuthenticated && (
-            <ImportData
-              onClose={() => setShowImportModal(false)}
-              onImportSuccess={handleImportData}
-              existingSubcategories={subcategories.map((s: SubcategoryItem) => s.name)}
-            />
-          )}
 
           {/* Settings Sidebar */}
           <SettingsSidebar

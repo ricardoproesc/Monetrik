@@ -39,6 +39,90 @@ async function apiFetch<T>(method: string, path: string, body?: unknown): Promis
   return res.json() as Promise<T>;
 }
 
+// ---- Plano / conta ----
+export interface MeInfo {
+  plano: string; // 'basico' | 'premium'
+  maxPessoas: number | null; // null = ilimitado
+  pessoasCount: number;
+}
+export async function loadMe(): Promise<MeInfo> {
+  return apiFetch<MeInfo>("GET", "me");
+}
+
+// ---- Projetos ----
+export interface ProjectInfo {
+  id_projeto: string;
+  nome: string;
+  [key: string]: unknown;
+}
+export async function loadProjetos(): Promise<ProjectInfo[]> {
+  return apiFetch<ProjectInfo[]>("GET", "projetos");
+}
+export async function renameProject(id: string, nome: string): Promise<ProjectInfo> {
+  return apiFetch<ProjectInfo>("PUT", `projetos/${id}`, { nome });
+}
+
+// ---- Migração (novo fluxo) ----
+export interface PreviewPerson {
+  nomePlanilha: string;        // nome como veio na planilha
+  existenteId: string | null;  // bate exatamente com um familiar existente
+  sugestaoId: string | null;   // familiar parecido (sugestão para confirmar)
+  sugestaoNome: string | null;
+}
+export interface MigrationPreview {
+  pessoas: PreviewPerson[];
+  pessoasExistentes: { id: string; nome: string }[];
+  plano: string;
+  categorias: string[];
+  subcategorias: number;
+  lancamentos: number;
+  erros: { linha: number; campo: string; erro: string }[];
+}
+export interface MigrationResult {
+  pessoasCriadas: number;
+  categorias: number;
+  subcategorias: number;
+  receitas: number;
+  despesas: number;
+}
+export async function migrationPreview(fileData: string): Promise<MigrationPreview> {
+  return apiFetch<MigrationPreview>("POST", "migration", { action: "preview", fileData });
+}
+// personMap: nomePlanilha -> id de familiar existente OU "new".
+export async function migrationExecute(
+  fileData: string,
+  projectName?: string,
+  personMap?: Record<string, string>,
+): Promise<MigrationResult> {
+  return apiFetch<MigrationResult>("POST", "migration", {
+    action: "execute",
+    fileData,
+    projectName,
+    personMap,
+  });
+}
+// Baixa o template XLSX (binário) autenticado e dispara o download no browser.
+export async function downloadMigrationTemplate(): Promise<void> {
+  const token = await getToken();
+  const res = await fetch("/api/migration/template", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Erro ao baixar modelo (${res.status}): ${text}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "monetrik-modelo-migracao.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ---- People ----
 export async function loadPeople(_uid: string): Promise<Person[]> {
   return apiFetch<Person[]>("GET", "people");

@@ -7,7 +7,7 @@
  * configuradas no projeto Vercel.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { handleApi } from "../../lib/server/apiCore.js";
+import { handleApi } from "../../lib/server/apiCore";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const raw = req.query.path;

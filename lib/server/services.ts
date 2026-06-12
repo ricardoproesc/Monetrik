@@ -7,7 +7,7 @@
  * Quando o frontend não envia id (criação), o banco gera via autoincrement.
  */
 import { Prisma } from "@prisma/client";
-import { prisma } from "./prisma.js";
+import { prisma } from "./prisma";
 import {
   PersonDTO,
   IncomeDTO,
@@ -18,7 +18,7 @@ import {
   parentescoToRelationship,
   toDateString,
   parseDate,
-} from "./dtos.js";
+} from "./dtos";
 import {
   ensureProjetoDefault,
   getProjetoDefault,
@@ -27,7 +27,7 @@ import {
   resolveSubcategoriaId,
   resolveSubcategoriaByName,
   ensureProjetoSubcategoria,
-} from "./context.js";
+} from "./context";
 
 /**
  * Converte id string (frontend) -> bigint. Retorna undefined para ids vazios

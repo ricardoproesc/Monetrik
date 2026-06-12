@@ -14,11 +14,11 @@
  * serialização BigInt->string é feita pelo toJSON global (ver prisma.ts).
  */
 import { Prisma } from "@prisma/client";
-import { prisma } from "./prisma.js";
-import { verifyToken, AuthError } from "./auth.js";
-import { getOrCreateUsuario, Ctx } from "./context.js";
-import * as svc from "./services.js";
-import { previewMigration, executeMigration } from "./migration.js";
+import { prisma } from "./prisma";
+import { verifyToken, AuthError } from "./auth";
+import { getOrCreateUsuario, Ctx } from "./context";
+import * as svc from "./services";
+import { previewMigration, executeMigration } from "./migration";
 
 export interface ApiResponse {
   status: number;

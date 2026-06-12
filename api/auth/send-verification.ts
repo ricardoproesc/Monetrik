@@ -6,7 +6,7 @@
  * (ou GOOGLE_APPLICATION_CREDENTIALS), FIREBASE_PROJECT_ID e APP_URL.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { sendVerificationEmail } from "../../lib/server/authEmail.js";
+import { sendVerificationEmail } from "../../lib/server/authEmail";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {

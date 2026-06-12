@@ -6,8 +6,8 @@
  * Usado por /api/auth/send-verification (Express e Vercel).
  */
 import "dotenv/config";
-import { generateVerificationLink } from "./auth.js";
-import { sendEmail, verificationEmailHtml } from "./email.js";
+import { generateVerificationLink } from "./auth";
+import { sendEmail, verificationEmailHtml } from "./email";
 
 export async function sendVerificationEmail(email: string, displayName?: string): Promise<void> {
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
